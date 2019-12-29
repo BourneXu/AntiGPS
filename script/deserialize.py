@@ -3,13 +3,13 @@ import sys
 
 sys.path.append("..")
 
-
 import io
 import plyvel
 import pandas as pd
 from PIL import Image
 import streetlearn_pb2
 import plotly.express as px
+from dynaconf import settings
 
 
 class Deserialize:
@@ -33,7 +33,7 @@ class Deserialize:
             self.coords["lngs"].append(pano.coords.lng)
 
     def visualize_map(self):
-        mapbox_access_token = "pk.eyJ1IjoiY2hyaXNrdWFpaHVvIiwiYSI6ImNqdHRoNXJiYTFibGg0MXBjdHZpYzlhd2wifQ.vx5yMJTChBIZR3Knos_zLw"
+        mapbox_access_token = settings.MAPTOKEN
         px.set_mapbox_access_token(mapbox_access_token)
         fig = px.scatter_mapbox(
             pd.DataFrame(self.coords),
@@ -52,6 +52,6 @@ class Deserialize:
 
 if __name__ == "__main__":
     test = Deserialize(databaseDir)
-    databaseDir = "./data/manhattan_512"
+    databaseDir = settings.LEVELDB.dir
     test.visualize_map()
     test.visualize_pano(test.pano[b"zym3dx470o8I4SOBXiawhA"])
