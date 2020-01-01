@@ -51,7 +51,7 @@ class Deserialize:
 
 
 if __name__ == "__main__":
-    test = Deserialize(databaseDir)
     databaseDir = settings.LEVELDB.dir
+    test = Deserialize(databaseDir)
     test.visualize_map()
-    test.visualize_pano(test.pano[b"zym3dx470o8I4SOBXiawhA"])
+    test.visualize_pano(test.pano[b"zhQIpFP7b4i56aavzTW9UA"])
