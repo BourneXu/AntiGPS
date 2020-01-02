@@ -1,0 +1,10 @@
+loguru==0.4.0
+tqdm==4.36.1
+matplotlib==3.1.1
+plyvel==1.1.0
+dynaconf==2.2.2
+requests==2.22.0
+plotly==4.4.1
+pandas==0.25.1
+Pillow==7.0.0
+protobuf==3.11.2

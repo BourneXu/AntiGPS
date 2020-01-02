@@ -6,10 +6,13 @@ sys.path.append("..")
 import io
 import plyvel
 import pandas as pd
+from tqdm import tqdm
 from PIL import Image
-import streetlearn_pb2
+from proto import streetlearn_pb2
 import plotly.express as px
 from dynaconf import settings
+from matplotlib import pyplot as plt
+import matplotlib.image as mpimg
 
 
 class Deserialize:
@@ -25,7 +28,7 @@ class Deserialize:
     def deserialize(self):
         self.pano = {}
         self.coords = {"lats": [], "lngs": []}
-        for k, v in self.db:
+        for k, v in tqdm(self.db):
             pano = streetlearn_pb2.Pano()
             pano.ParseFromString(v)
             self.pano[k] = pano
@@ -46,12 +49,18 @@ class Deserialize:
 
     @staticmethod
     def visualize_pano(pano: streetlearn_pb2.Pano):
-        image = Image.open(io.BytesIO(pano.compressed_image))
-        image.show()
+        ## PIL raise memory error if image is large
+        # image = Image.open(io.BytesIO(pano.compressed_image))
+        # image.show()
+
+        img = mpimg.imread(io.BytesIO(pano.compressed_image), format="JPG")
+        plt.imshow(img)
+        plt.show()
 
 
 if __name__ == "__main__":
-    databaseDir = settings.LEVELDB.dir
+    databaseDir = settings.LEVELDB.dir[1]
     test = Deserialize(databaseDir)
     test.visualize_map()
     test.visualize_pano(test.pano[b"zhQIpFP7b4i56aavzTW9UA"])
+    # test.visualize_pano(test.pano[list(test.pano.keys())[0]])
