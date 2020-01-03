@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import io
 import os
 import json
@@ -61,7 +62,7 @@ class AntiGPS:
                 except:
                     logger.warning(f"pano {pid} cannot identify image")
                     continue
-                image_path = f"./results/images/{pano.id}.jpg"
+                image_path = f"./results/images/{pid}.jpg"
                 img.save(image_path, format="JPEG")
                 info_text = self.ocr(image_path)
                 info_all = {
