@@ -113,23 +113,16 @@ class AntiGPS:
             lat, lng = pano_attack["lat"], pano_attack["lng"]
 
         pano_google, img_path = self.get_pano_google(pano_attack)
-        pano_defense = {}
+        text_defense_list = []
         for i_path in img_path:
-            pano = self.ocr(i_path)
-            if not pano_defense:
-                pano_defense = pano
-            else:
-                pano_defense["text_ocr"].extend(pano["text_ocr"])
+            info_text = self.ocr(i_path)
+            text_defense_list.extend(info_text)
 
         text_attack = " ".join(
             [x["predicted_labels"] for x in pano_attack["text_ocr"] if x["confidence_score"] > 0.95]
         )
         text_defense = " ".join(
-            [
-                x["predicted_labels"]
-                for x in pano_defense["text_ocr"]
-                if x["confidence_score"] > 0.95
-            ]
+            [x["predicted_labels"] for x in text_defense_list if x["confidence_score"] > 0.95]
         )
         decider = Decider()
         ratio = decider.similarity_text(text_attack, text_defense)
@@ -140,9 +133,11 @@ class AntiGPS:
             "lng": [pano_attack["lng"]],
             "lat_attack": [lat],
             "lng_attack": [lng],
+            "text_attack": [text_attack],
+            "text_defense": [text_defense],
         }
         resultDF = pd.DataFrame(result)
-        resultDF.to_csv("./results/defense_result.csv", mode="a", index=False)
+        resultDF.to_csv("./results/defense_result.csv", mode="a", index=False, header=False)
         logger.info(f"Defensed {pano_attack['id']}")
 
 
@@ -163,7 +158,8 @@ def test_get_streetview():
 def test_attack_defense():
     antigps = AntiGPS()
     attack = Attacker("./results/pano_text.json")
-    pano_attack_list = attack.random(10)
+    # pano_attack_list = attack.random(10)
+    pano_attack_list = attack.random_same(10)
     for pano_attack in tqdm(pano_attack_list):
         antigps.defense(pano_attack)
 

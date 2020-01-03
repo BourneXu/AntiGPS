@@ -12,7 +12,7 @@
 import json
 import random
 from tqdm import tqdm
-from utility import Utility
+from script.utility import Utility
 
 
 class Attacker:
@@ -26,6 +26,9 @@ class Attacker:
             for line in tqdm(fin.readlines()):
                 data = json.loads(line)
                 self.dataset[data["id"]] = data
+
+    def random_same(self, num):
+        return random.sample(list(self.dataset.values()), num)
 
     def random(self, num):
         pano_attack = random.sample(list(self.dataset.values()), num)
