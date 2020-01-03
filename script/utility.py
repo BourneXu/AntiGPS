@@ -24,6 +24,11 @@ class Utility:
         image.show()
 
     @staticmethod
+    def image_save(image: bytes, filename):
+        image = Image.open(io.BytesIO(image))
+        image.save(filename, format="JPEG")
+
+    @staticmethod
     def plot_cdf(xarray):
         # xarray_sorted = np.sort(xarray)
         # percent = 1.0 * np.arange(len(xarray)) / (len(xarray) - 1)
@@ -39,7 +44,8 @@ class Utility:
         for _ in range(number_of_points):
             lat = round(random.uniform(SOUTHERNMOST, NORTHERNMOST), 6)
             lng = round(random.uniform(EASTERNMOST, WESTERNMOST), 6)
-            gcode = geocoder.mapbox([lat, lng], method="reverse", key=settings.MAPTOKEN)
-            coordinate_list.append(gcode)
+            # gcode = geocoder.mapbox([lat, lng], method="reverse", key=settings.MAPTOKEN)
+            # coordinate_list.append(gcode)
+            coordinate_list.append((lat, lng))
         return coordinate_list
 
