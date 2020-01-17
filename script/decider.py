@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 19:46:23
 # -----
-# Last Modified: 2020-01-02 20:02:06
+# Last Modified: 2020-01-05 15:42:59
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -28,3 +28,4 @@ if __name__ == "__main__":
     test = Decider()
     prob = test.similarity_text("asdad asd as", "asdasd fesf s")
     print(prob)
+

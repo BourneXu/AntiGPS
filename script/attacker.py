@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 21:16:28
 # -----
-# Last Modified: 2020-01-02 23:23:23
+# Last Modified: 2020-01-17 13:06:15
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -43,11 +43,50 @@ class Attacker:
     def nearby(self, num):
         pass
 
-    def driving(self, num):
-        pass
+    def driving(self, num_route, num_point):
+        pano_init = random.sample(list(self.dataset.values()), num_route)
+        pano_attack_driving = []
+        for pano in pano_init:
+            pano_attack_driving.append(self.generate_route(pano, num_point))
+        return pano_attack_driving
+
+    def generate_route(self, pano_init, num_point):
+        route = []
+        pano = pano_init
+        for idx in range(num_point):
+            if not route:
+                pano_nxt_id = pano["neighbor"][0]
+            else:
+                if pano["neighbor"][0] == route[idx - 1]["id"]:
+                    pano_nxt_id = pano["neighbor"][1]
+                else:
+                    pano_nxt_id = pano["neighbor"][0]
+            ## fraud GPS
+            gps_correct = (pano["lat"], pano["lng"])
+            gps_attack = Utility.generateGPS_random(1)[0]
+            while gps_attack == gps_correct:
+                gps_attack = Utility.generateGPS_random(1)[0]
+            pano["lat_attack"] = gps_attack[0]
+            pano["lng_attack"] = gps_attack[1]
+            route.append(pano)
+            pano = self.dataset[pano_nxt_id]
+        return route
+
+
+def test_generate_route():
+    test = Attacker("../results/pano_text.json")
+    routes = test.driving(10, 50)
+    coords = {"lats": [], "lngs": []}
+    for route in routes:
+        for pano in route:
+            coords["lats"].append(pano["lat"])
+            coords["lngs"].append(pano["lng"])
+    Utility.visualize_map(coords)
 
 
 if __name__ == "__main__":
-    test = Attacker("../results/pano_text.json")
-    test_pano_attack_random = test.random(10)
-    print(test_pano_attack_random)
+    # test = Attacker("../results/pano_text.json")
+    # test_pano_attack_random = test.random(10)
+    # print(test_pano_attack_random)
+    
+    test_generate_route()

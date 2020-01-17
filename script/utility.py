@@ -5,10 +5,13 @@ import scipy
 import random
 import geocoder
 import numpy as np
+import pandas as pd
 from PIL import Image
 from scipy import signal
+import plotly.express as px
 from dynaconf import settings
 import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 from statsmodels.distributions.empirical_distribution import ECDF
 
 NORTHERNMOST = 49.0
@@ -49,3 +52,15 @@ class Utility:
             coordinate_list.append((lat, lng))
         return coordinate_list
 
+    @staticmethod
+    def visualize_map(self, coords: dict):
+        mapbox_access_token = settings.MAPTOKEN
+        px.set_mapbox_access_token(mapbox_access_token)
+        fig = px.scatter_mapbox(
+            pd.DataFrame(coords),
+            lat="lats",
+            lon="lngs",
+            color_continuous_scale=px.colors.cyclical.IceFire,
+            zoom=10,
+        )
+        fig.show()

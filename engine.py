@@ -57,6 +57,7 @@ class AntiGPS:
         img.save(filename, format="JPEG")
         return filename
 
+    # TODO: two service: text detection and text recognition
     def ocr(self, image_path):
         url = "http://localhost:8301/ocr"
         data = {"image_path": os.path.abspath(image_path)}
@@ -146,6 +147,7 @@ class AntiGPS:
 
 
 def test_get_streetview():
+    test_antigps = AntiGPS()
     databaseDir = settings.LEVELDB.dir
     test_de = Deserialize(databaseDir)
     pano = test_de.pano[b"zhQIpFP7b4i56aavzTW9UA"]
