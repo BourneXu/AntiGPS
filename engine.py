@@ -43,7 +43,10 @@ class AntiGPS:
                 cred["heading"] += degree
                 img = self.get_streetview(cred)
                 filename = f"./results/google_img/{hash(str(credentials['lat']) + '_' + str(credentials['lng']))}_{idx}.jpg"
-                Utility.image_save(img, filename)
+                if not os.path.exists(filename):
+                    Utility.image_save(img, filename)
+                else:
+                    logger.warning(f"Image {filename} is existing")
                 pano_120.append(img)
                 img_path.append(filename)
                 fin.write(f"{filename},{credentials['lat']},{credentials['lng']}" + "\n")
