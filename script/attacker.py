@@ -8,10 +8,12 @@
 # -----
 # Copyright (c) 2020
 ###
-
+import os
 import json
 import random
+import pandas as pd
 from tqdm import tqdm
+from loguru import logger
 from script.utility import Utility
 
 
@@ -47,17 +49,39 @@ class Attacker:
         pass
 
     def driving(self, num_route, num_point):
+        logger.info(f"Generating {num_route} routes with {num_point} points")
         pano_init = random.sample(list(self.dataset.values()), num_route)
         pano_attack_driving = []
+        count_miss = 0
         for pano in pano_init:
-            pano_attack_driving.append(self.generate_route(pano, num_point))
+            for _ in range(5):
+                route = self.generate_route(pano, num_point)
+                if route:
+                    break
+            if not route:
+                count_miss += 1
+                logger.warning(f"{pano['id']} can not find a route.")
+            else:
+                pano_attack_driving.append(route)
+        if count_miss:
+            pano_attack_driving.extend(self.driving(count_miss, num_point))
         return pano_attack_driving
 
     def driving_same(self, num_route, num_point):
         pano_init = random.sample(list(self.dataset.values()), num_route)
         pano_attack_driving_same = []
+        count_miss = 0
         for pano in pano_init:
-            pano_attack_driving_same.append(self.generate_route(pano, num_point, attack=False))
+            for _ in range(5):
+                route = self.generate_route(pano, num_point, attack=False)
+                if route:
+                    break
+            if not route:
+                logger.warning(f"{pano['id']} can not find a route.")
+            else:
+                pano_attack_driving_same.append(route)
+        if count_miss:
+            pano_attack_driving_same.extend(self.driving_same(count_miss, num_point))
         return pano_attack_driving_same
 
     def generate_route(self, pano_init, num_point, attack=True):
@@ -67,10 +91,12 @@ class Attacker:
             if not route:
                 pano_nxt_id = pano["neighbor"][0]
             else:
-                if pano["neighbor"][0] == route[idx - 1]["id"]:
-                    pano_nxt_id = pano["neighbor"][1]
-                else:
-                    pano_nxt_id = pano["neighbor"][0]
+                if len(pano["neighbor"]) == 1:
+                    return []
+                pano_nxt_id = random.choice(pano["neighbor"])
+                while pano_nxt_id == route[idx - 1]["id"]:
+                    pano_nxt_id = random.choice(pano["neighbor"])
+
             if attack:
                 ## fraud GPS
                 gps_correct = (pano["lat"], pano["lng"])
@@ -86,13 +112,22 @@ class Attacker:
 
 def test_generate_route():
     test = Attacker("../results/pano_text.json")
-    routes = test.driving(10, 50)
-    coords = {"lats": [], "lngs": []}
-    for route in routes:
+    routes = test.driving(300, 50)
+    routes_dict = {"route_id": [], "pano_id": []}
+    coords = {"lats": [], "lngs": [], "lats_attack": [], "lngs_attack": []}
+    for idx, route in enumerate(routes):
         for pano in route:
+            routes_dict["route_id"].append(idx)
+            routes_dict["pano_id"].append(pano["id"])
             coords["lats"].append(pano["lat"])
             coords["lngs"].append(pano["lng"])
+            coords["lats_attack"].append(pano["lat_attack"])
+            coords["lngs_attack"].append(pano["lng_attack"])
     Utility.visualize_map(coords)
+    routesDF = pd.DataFrame({**routes_dict, **coords})
+    filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate.csv"
+    header = not os.path.exists(filename)
+    routesDF.to_csv(filename, index=False, header=header, mode="a")
 
 
 if __name__ == "__main__":

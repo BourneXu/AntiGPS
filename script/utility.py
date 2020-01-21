@@ -27,8 +27,20 @@ class Utility:
         image.show()
 
     @staticmethod
-    def image_save(image: bytes, filename):
+    def image_save(image, filename, google=False):
+        if google:
+            ## Cut image to remove google watermark
+            width, height = image.size
+            image = image.crop((0, 0, width, height - 40))
+        image.save(filename, format="JPEG")
+
+    @staticmethod
+    def image_save_byte(image: bytes, filename, google=False):
         image = Image.open(io.BytesIO(image))
+        if google:
+            ## Cut image to remove google watermark
+            width, height = image.size
+            image = image.crop((0, 0, width, height - 40))
         image.save(filename, format="JPEG")
 
     @staticmethod
@@ -53,7 +65,7 @@ class Utility:
         return coordinate_list
 
     @staticmethod
-    def visualize_map(self, coords: dict):
+    def visualize_map(coords: dict):
         mapbox_access_token = settings.MAPTOKEN
         px.set_mapbox_access_token(mapbox_access_token)
         fig = px.scatter_mapbox(
@@ -87,3 +99,27 @@ class Utility:
         dst.paste(_im2, (_im1.width, 0))
         return dst
 
+
+def test_concat_images():
+    import os
+
+    folder = "../results/google_img/"
+    image_files = os.listdir(folder)
+    img_names = set([x.split("_")[0] for x in image_files])
+    for img_name in img_names:
+        pano_120 = []
+        for idx in range(3):
+            current_img = folder + img_name + f"_{idx}.jpg"
+            pano_120.append(Image.open(current_img))
+        image, img1, img2 = pano_120
+        image = Utility.concat_images_h_resize(image, img1)
+        image = Utility.concat_images_h_resize(image, img2)
+        filename = folder + img_name + ".jpg"
+        if not os.path.exists(filename):
+            Utility.image_save(image, filename, google=True)
+        else:
+            logger.warning(f"Image {filename} is existing")
+
+
+if __name__ == "__main__":
+    test_concat_images()

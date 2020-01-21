@@ -9,7 +9,14 @@
 # Copyright (c) 2020
 ###
 
+from keras.layers import Dense, Dropout, LSTM, Embedding
+from keras.preprocessing.sequence import pad_sequences
+from keras.models import Sequential
+from loguru import logger
 from fuzzywuzzy import fuzz
+import pandas as pd
+import numpy as np
+import pickle
 
 
 class Decider:
@@ -20,12 +27,73 @@ class Decider:
         ## Fuzzy string matching
         return fuzz.partial_ratio(textA, textB) / 100.0
 
-    def similarity_position(self):
-        pass
+    def load_data(self, test_split=0.2):
+        logger.info("Loading data...")
+        with open("/home/bourne/Workstation/AntiGPS/results/data_attack_lstm.pkl", "rb") as fin:
+            data_attack = pickle.load(fin)
+        with open("/home/bourne/Workstation/AntiGPS/results/data_noattack_lstm.pkl", "rb") as fin:
+            data_noattack = pickle.load(fin)
+
+        train_size = int((len(data_attack) + len(data_noattack)) * (1 - test_split))
+
+        num = round(train_size / 2)
+        X_train = np.array(data_attack[:num] + data_noattack[:num])
+        y_train = np.array([1] * num + [0] * num)
+        X_test = np.array(data_attack[num:] + data_noattack[num:])
+        y_test = np.array([1] * (len(data_attack) - num) + [0] * (len(data_noattack) - num))
+
+        return (
+            pad_sequences(X_train),
+            y_train
+            pad_sequences(X_test),
+            y_test
+        )
+
+    def create_model(self, input_length):
+        print("Creating model...")
+        model = Sequential()
+        # model.add(Embedding(input_dim=188, output_dim=50, input_length=input_length))
+        model.add(
+            LSTM(
+                output_dim=256,
+                activation="sigmoid",
+                inner_activation="hard_sigmoid",
+                return_sequences=True,
+                input_shape=(50, 1548),
+            )
+        )
+        model.add(Dropout(0.5))
+        model.add(
+            LSTM(
+                output_dim=256,
+                activation="sigmoid",
+                inner_activation="hard_sigmoid",
+                input_shape=(50, 1548),
+                return_sequences=True,
+            )
+        )
+        model.add(Dropout(0.5))
+        model.add(Dense(1, activation="sigmoid"))
+
+        print("Compiling...")
+        model.compile(loss="binary_crossentropy", optimizer="rmsprop", metrics=["accuracy"])
+        return model
+
+
+def test_lstm():
+    test = Decider()
+    X_train, y_train, X_test, y_test = test.load_data()
+
+    model = test.create_model(len(X_train[0]))
+
+    print("Fitting model...")
+    hist = model.fit(X_train, y_train, batch_size=64, nb_epoch=10, validation_split=0.1, verbose=1)
+
+    score, acc = model.evaluate(X_test, y_test, batch_size=1)
+    print("Test score:", score)
+    print("Test accuracy:", acc)
 
 
 if __name__ == "__main__":
-    test = Decider()
-    prob = test.similarity_text("asdad asd as", "asdasd fesf s")
-    print(prob)
+    test_lstm()
 
