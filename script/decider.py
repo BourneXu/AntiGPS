@@ -42,12 +42,7 @@ class Decider:
         X_test = np.array(data_attack[num:] + data_noattack[num:])
         y_test = np.array([1] * (len(data_attack) - num) + [0] * (len(data_noattack) - num))
 
-        return (
-            pad_sequences(X_train),
-            y_train
-            pad_sequences(X_test),
-            y_test
-        )
+        return (pad_sequences(X_train), y_train, pad_sequences(X_test), y_test)
 
     def create_model(self, input_length):
         print("Creating model...")
@@ -63,15 +58,7 @@ class Decider:
             )
         )
         model.add(Dropout(0.5))
-        model.add(
-            LSTM(
-                output_dim=256,
-                activation="sigmoid",
-                inner_activation="hard_sigmoid",
-                input_shape=(50, 1548),
-                return_sequences=True,
-            )
-        )
+        model.add(LSTM(output_dim=256, activation="sigmoid", inner_activation="hard_sigmoid",))
         model.add(Dropout(0.5))
         model.add(Dense(1, activation="sigmoid"))
 
