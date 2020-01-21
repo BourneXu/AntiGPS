@@ -45,7 +45,7 @@ class Decider:
         return (pad_sequences(X_train), y_train, pad_sequences(X_test), y_test)
 
     def create_model(self, input_length):
-        print("Creating model...")
+        logger.info("Creating model...")
         model = Sequential()
         # model.add(Embedding(input_dim=188, output_dim=50, input_length=input_length))
         model.add(
@@ -62,7 +62,7 @@ class Decider:
         model.add(Dropout(0.5))
         model.add(Dense(1, activation="sigmoid"))
 
-        print("Compiling...")
+        logger.info("Compiling...")
         model.compile(loss="binary_crossentropy", optimizer="rmsprop", metrics=["accuracy"])
         return model
 
@@ -73,12 +73,12 @@ def test_lstm():
 
     model = test.create_model(len(X_train[0]))
 
-    print("Fitting model...")
+    logger.info("Fitting model...")
     hist = model.fit(X_train, y_train, batch_size=64, nb_epoch=10, validation_split=0.1, verbose=1)
 
     score, acc = model.evaluate(X_test, y_test, batch_size=1)
-    print("Test score:", score)
-    print("Test accuracy:", acc)
+    logger.info(f"Test score: {score}")
+    logger.info(f"Test accuracy: {acc}")
 
 
 if __name__ == "__main__":

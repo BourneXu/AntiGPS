@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 import io
 import os
+import sys
 import json
 import copy
+import time
 import pickle
+import hashlib
 import requests
+import warnings
 import pandas as pd
 from PIL import Image
 from tqdm import tqdm
+from tenacity import *
 from loguru import logger
 from dynaconf import settings
 from script.feature import Feature
@@ -16,20 +21,25 @@ from script.utility import Utility
 from script.attacker import Attacker
 from script.deserialize import Deserialize
 
+if not sys.warnoptions:
+    warnings.simplefilter("ignore")
+
 
 class AntiGPS:
     def __init__(self):
         self.attacker = Attacker("./results/pano_text.json")
         self.feature = Feature()
 
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(120))
     def get_streetview(self, credentials):
         logger.debug(f"Getting Street View with heading {credentials['heading']}")
         credentials["apikey"] = settings.GOOGLEAPI
-        url = "https://maps.googleapis.com/maps/api/streetview?size=1280x640&location={lat},{lng}&heading={heading}&pitch={pitch}&fov=120&key={apikey}".format(
+        url = "https://maps.googleapis.com/maps/api/streetview?size=1280x640&location={lat},{lng}&heading={heading}&pitch={pitch}&fov=120&source=outdoor&key={apikey}".format(
             **credentials
         )
         image = requests.get(url)
         if image.status_code != 200:
+            logger.warning(f"{image.json}")
             raise ValueError("No Google Street View Available")
         return image.content
 
@@ -37,22 +47,28 @@ class AntiGPS:
         logger.debug(
             f"Getting Google Street View Pano of {credentials['lat']}, {credentials['lng']}"
         )
-        pano_120 = []
-        with open("./results/google_img.csv", "a") as fin:
-            for idx, degree in enumerate([-120, 0, 120]):
-                cred = copy.deepcopy(credentials)
-                cred["heading"] += degree
-                img = self.get_streetview(cred)
-                pano_120.append(img)
-            image, img1, img2 = [Image.open(io.BytesIO(pano)) for pano in pano_120]
-            image = Utility.concat_images_h_resize(image, img1)
-            image = Utility.concat_images_h_resize(image, img2)
-            filename = f"./results/google_img/{hash(str(credentials['lat']) + '_' + str(credentials['lng']))}.jpg"
-            if not os.path.exists(filename):
+        filename = f"./results/google_img/{hashlib.md5((str(credentials['lat']) + '_' + str(credentials['lng']) + '_' + str(credentials['heading']) + '_' + str(credentials['pitch'])).encode()).hexdigest()}.jpg"
+        ## Firstly check if local pano exists
+        if os.path.exists(filename):
+            logger.warning(f"Image {filename} is existing")
+            image = Image.open(filename)
+        else:
+            ## requests Google API
+            pano_120 = []
+            with open("./results/google_img.csv", "a") as fin:
+                for idx, degree in enumerate([-120, 0, 120]):
+                    cred = copy.deepcopy(credentials)
+                    cred["heading"] += degree
+                    img = self.get_streetview(cred)
+                    pano_120.append(img)
+                image, img1, img2 = [Image.open(io.BytesIO(pano)) for pano in pano_120]
+                image = Utility.concat_images_h_resize(image, img1)
+                image = Utility.concat_images_h_resize(image, img2)
                 Utility.image_save(image, filename, google=True)
-            else:
-                logger.warning(f"Image {filename} is existing")
-            fin.write(f"{filename},{credentials['lat']},{credentials['lng']}" + "\n")
+                fin.write(
+                    f"{filename},{credentials['lat']},{credentials['lng']},{credentials['heading']},{credentials['pitch']}"
+                    + "\n"
+                )
         return image, filename
 
     def deblur(self, pano):
@@ -148,55 +164,73 @@ class AntiGPS:
         logger.info(f"Defensed {pano_attack['id']}")
 
     # TODO: For real system, input should be two pano bytes or image objects
-    def generate_feature_vector_local(self, pano_id, pano_id_attack):
+    def generate_feature_vector_local(self, pano_id, pano_id_attack, google=False):
         feature_vector = []
         feature_vector.extend(
             self.feature.textbox_position(self.attacker.dataset[pano_id], height=408, width=1632)
         )
         feature_vector.extend(self.feature.sentence_vector(self.attacker.dataset[pano_id]))
-        feature_vector.extend(
-            self.feature.textbox_position(
-                self.attacker.dataset[pano_id_attack], height=408, width=1632
+        ## google means get attack pano from google API. Otherwise get pano from local database
+        if not google:
+            feature_vector.extend(
+                self.feature.textbox_position(
+                    self.attacker.dataset[pano_id_attack], height=408, width=1632
+                )
             )
-        )
-        feature_vector.extend(self.feature.sentence_vector(self.attacker.dataset[pano_id_attack]))
+            feature_vector.extend(
+                self.feature.sentence_vector(self.attacker.dataset[pano_id_attack])
+            )
+        else:
+            image, image_path = self.get_pano_google(self.attacker.dataset[pano_id_attack])
+            ocr_results = self.ocr(image_path)
+            feature_vector.extend(self.feature.textbox_position(ocr_results))
+            feature_vector.extend(self.feature.sentence_vector(ocr_results))
         return feature_vector
 
-    def generate_train_data(self):
+    def generate_train_data(self, attack=True, noattack=True):
         filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate.csv"
         routesDF = pd.read_csv(filename, index_col=["route_id"])
         routes_num = int(routesDF.index[-1] + 1)
         routes_slot = round(routes_num / 3)
         ## LSTM input data N (routes) x M (time steps) x W (features)
-        data_attack = []
-        for route_id in tqdm(range(routes_slot)):
-            data_route = []
-            routeDF = routesDF.loc[route_id]
-            for step in range(len(routeDF)):
-                pano_id, pano_id_attack = (
-                    routeDF.iloc[step]["pano_id"],
-                    routesDF.iloc[step + routes_slot]["pano_id"],
-                )
-                data_route.append(self.generate_feature_vector_local(pano_id, pano_id_attack))
-            data_attack.append(data_route)
+        if attack:
+            logger.info("Generating training data for attacking")
+            data_attack = []
+            for route_id in tqdm(range(routes_slot)):
+                data_route = []
+                routeDF = routesDF.loc[route_id]
+                for step in range(len(routeDF)):
+                    pano_id, pano_id_attack = (
+                        routeDF.iloc[step]["pano_id"],
+                        routesDF.iloc[step + routes_slot]["pano_id"],
+                    )
+                    data_route.append(self.generate_feature_vector_local(pano_id, pano_id_attack))
+                data_attack.append(data_route)
 
-        with open("/home/bourne/Workstation/AntiGPS/results/data_attack_lstm.pkl", "wb") as fout:
-            pickle.dump(data_attack, fout, protocol=pickle.HIGHEST_PROTOCOL)
+            with open(
+                "/home/bourne/Workstation/AntiGPS/results/data_attack_lstm.pkl", "wb"
+            ) as fout:
+                pickle.dump(data_attack, fout, protocol=pickle.HIGHEST_PROTOCOL)
+        if noattack:
+            logger.info("Generating training data for non-attacking")
+            data_noattack = []
+            for route_id in tqdm(range(2 * routes_slot, 3 * routes_slot)):
+                data_route = []
+                routeDF = routesDF.loc[route_id]
+                for step in range(len(routeDF)):
+                    pano_id, pano_id_attack = (
+                        routeDF.iloc[step]["pano_id"],
+                        routeDF.iloc[step]["pano_id"],
+                    )
+                    data_route.append(
+                        self.generate_feature_vector_local(pano_id, pano_id_attack, google=True)
+                    )
+                data_noattack.append(data_route)
 
-        data_noattack = []
-        for route_id in tqdm(range(2 * routes_slot, 3 * routes_slot)):
-            data_route = []
-            routeDF = routesDF.loc[route_id]
-            for step in range(len(routeDF)):
-                pano_id, pano_id_attack = (
-                    routeDF.iloc[step]["pano_id"],
-                    routeDF.iloc[step]["pano_id"],
-                )
-                data_route.append(self.generate_feature_vector_local(pano_id, pano_id_attack))
-            data_noattack.append(data_route)
-
-        with open("/home/bourne/Workstation/AntiGPS/results/data_noattack_lstm.pkl", "wb") as fout:
-            pickle.dump(data_noattack, fout, protocol=pickle.HIGHEST_PROTOCOL)
+            with open(
+                "/home/bourne/Workstation/AntiGPS/results/data_noattack_lstm.pkl", "wb"
+            ) as fout:
+                pickle.dump(data_noattack, fout, protocol=pickle.HIGHEST_PROTOCOL)
         # return data
 
 
@@ -226,8 +260,8 @@ def test_attack_defense():
 
 def test_generate_train_data():
     antigps = AntiGPS()
-    data = antigps.generate_train_data()
-    print(len(data), len(data[0]), len(data[0][0]))
+    data = antigps.generate_train_data(attack=False)
+    # print(len(data), len(data[0]), len(data[0][0]))
 
 
 if __name__ == "__main__":

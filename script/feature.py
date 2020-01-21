@@ -19,7 +19,7 @@ class Feature:
     def textbox_position(self, ocr_results, height=None, width=None, area_num=6):
         if not height or not width:
             height, width = ocr_results["height"], ocr_results["width"]
-        text_ocr = ocr_results.get("text", None) or ocr_results.get("text_ocr", None)
+        text_ocr = ocr_results.get("text", []) or ocr_results.get("text_ocr", [])
         postions = [0] * area_num
         demarcation = np.linspace(0, width, area_num + 1)
         for text_info in text_ocr:
@@ -40,7 +40,7 @@ class Feature:
         pass
 
     def sentence_vector(self, ocr_results):
-        text_ocr = ocr_results.get("text", None) or ocr_results.get("text_ocr", None)
+        text_ocr = ocr_results.get("text", []) or ocr_results.get("text_ocr", [])
         text_ocr = sorted(text_ocr, key=lambda x: (x["location"][2], x["location"][0]))
         locations = np.array([x["location"] for x in text_ocr])
         text_groups = defaultdict(str)
