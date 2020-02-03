@@ -11,9 +11,11 @@
 
 import os
 import json
+
 import pandas as pd
-from tqdm import tqdm
 import matplotlib.pyplot as plt
+from tqdm import tqdm
+
 from utility import Utility
 
 

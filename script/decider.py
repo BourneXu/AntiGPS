@@ -3,20 +3,22 @@
 # @Author: Chris
 # Created Date: 2020-01-02 19:46:23
 # -----
-# Last Modified: 2020-01-19 20:03:49
+# Last Modified: 2020-02-02 14:56:57
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
 ###
 
-from keras.layers import Dense, Dropout, LSTM, Embedding
-from keras.preprocessing.sequence import pad_sequences
-from keras.models import Sequential
+import pickle
+
+import numpy as np
+import pandas as pd
 from loguru import logger
 from fuzzywuzzy import fuzz
-import pandas as pd
-import numpy as np
-import pickle
+
+from keras.layers import LSTM, Dense, Dropout, Embedding
+from keras.models import Sequential
+from keras.preprocessing.sequence import pad_sequences
 
 
 class Decider:
@@ -58,7 +60,7 @@ class Decider:
             )
         )
         model.add(Dropout(0.5))
-        model.add(LSTM(output_dim=256, activation="sigmoid", inner_activation="hard_sigmoid",))
+        model.add(LSTM(output_dim=256, activation="sigmoid", inner_activation="hard_sigmoid"))
         model.add(Dropout(0.5))
         model.add(Dense(1, activation="sigmoid"))
 
@@ -83,4 +85,3 @@ def test_lstm():
 
 if __name__ == "__main__":
     test_lstm()
-

@@ -1,10 +1,12 @@
 # TODO: feature engineering
 import bisect
 import operator
+from collections import defaultdict
+
 import numpy as np
 from loguru import logger
-from collections import defaultdict
 from sklearn.cluster import SpectralClustering
+
 from sentence_transformers import SentenceTransformer
 
 
@@ -113,5 +115,3 @@ if __name__ == "__main__":
         ],
         "width": 1920,
     }
-    f.sentence_vector(ocr_results)
-

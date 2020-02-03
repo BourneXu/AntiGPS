@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 21:16:28
 # -----
-# Last Modified: 2020-01-17 13:42:21
+# Last Modified: 2020-02-03 14:26:26
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -11,9 +11,11 @@
 import os
 import json
 import random
+
 import pandas as pd
 from tqdm import tqdm
 from loguru import logger
+
 from script.utility import Utility
 
 
@@ -108,6 +110,9 @@ class Attacker:
             route.append(pano)
             pano = self.dataset[pano_nxt_id]
         return route
+    
+    def generate_route_longer(self, route, add_point, attack=True):
+        pass
 
 
 def test_generate_route():
