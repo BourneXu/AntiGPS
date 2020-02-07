@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 21:16:28
 # -----
-# Last Modified: 2020-02-06 23:43:14
+# Last Modified: 2020-02-06 23:50:05
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -126,6 +126,7 @@ def test_generate_route_longer():
     routesDF = pd.read_csv(filename, index_col=["route_id"])
     routes_num = int(routesDF.index[-1] + 1)
     routes_dict = {"route_id": [], "pano_id": []}
+    routes_dist = 0
     coords = {"lats": [], "lngs": [], "lats_attack": [], "lngs_attack": []}
     for route_id in range(routes_num):
         route = []
@@ -145,11 +146,14 @@ def test_generate_route_longer():
             coords["lngs"].append(pano["lng"])
             coords["lats_attack"].append(pano["lat_attack"])
             coords["lngs_attack"].append(pano["lng_attack"])
+
+        routes_dist += Utility.distance_route(route)
+    logger.info("Average route length is {}".format(routes_dist / routes_num))
     Utility.visualize_map(coords)
     routesDF = pd.DataFrame({**routes_dict, **coords})
     filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer.csv"
     header = not os.path.exists(filename)
-    routesDF.to_csv(filename, index=False, header=header, mode="a")
+    routesDF.to_csv(filename, index=False, header=header, mode="w")
 
 
 if __name__ == "__main__":

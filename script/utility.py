@@ -3,7 +3,6 @@ import io
 import os
 import random
 
-import geopy
 import numpy as np
 import scipy
 import pandas as pd
@@ -12,6 +11,7 @@ import plotly.express as px
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from PIL import Image
+from geopy import distance
 from scipy import signal
 from dynaconf import settings
 from statsmodels.distributions.empirical_distribution import ECDF
@@ -106,7 +106,7 @@ class Utility:
         dist = 0
         for start, end in zip(route[:-1], route[1:]):
             coor_start, coor_end = (start["lat"], start["lng"]), (end["lat"], end["lng"])
-            dist += geopy.distance.distance(coor_start, coor_end)
+            dist += distance.distance(coor_start, coor_end).m
         return dist
 
 
