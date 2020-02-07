@@ -2,21 +2,23 @@
 import io
 import os
 import sys
-import json
 import copy
+import json
 import time
 import pickle
 import hashlib
-import requests
 import warnings
+
 import pandas as pd
+import requests
 from PIL import Image
 from tqdm import tqdm
-from tenacity import *
 from loguru import logger
 from dynaconf import settings
-from script.feature import Feature
+from tenacity import *
+
 from script.decider import Decider
+from script.feature import Feature
 from script.utility import Utility
 from script.attacker import Attacker
 from script.deserialize import Deserialize
@@ -271,4 +273,3 @@ if __name__ == "__main__":
 
     # test_attack_defense()
     test_generate_train_data()
-
