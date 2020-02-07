@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 21:16:28
 # -----
-# Last Modified: 2020-01-17 13:42:21
+# Last Modified: 2020-02-06 23:30:29
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -11,9 +11,11 @@
 import os
 import json
 import random
+
 import pandas as pd
 from tqdm import tqdm
 from loguru import logger
+
 from script.utility import Utility
 
 
@@ -48,14 +50,14 @@ class Attacker:
     def nearby(self, num):
         pass
 
-    def driving(self, num_route, num_point):
+    def driving(self, num_route, num_point, attack=True):
         logger.info(f"Generating {num_route} routes with {num_point} points")
         pano_init = random.sample(list(self.dataset.values()), num_route)
         pano_attack_driving = []
         count_miss = 0
         for pano in pano_init:
             for _ in range(5):
-                route = self.generate_route(pano, num_point)
+                route = self.generate_route(pano, num_point, attack=attack)
                 if route:
                     break
             if not route:
@@ -67,27 +69,12 @@ class Attacker:
             pano_attack_driving.extend(self.driving(count_miss, num_point))
         return pano_attack_driving
 
-    def driving_same(self, num_route, num_point):
-        pano_init = random.sample(list(self.dataset.values()), num_route)
-        pano_attack_driving_same = []
-        count_miss = 0
-        for pano in pano_init:
-            for _ in range(5):
-                route = self.generate_route(pano, num_point, attack=False)
-                if route:
-                    break
-            if not route:
-                logger.warning(f"{pano['id']} can not find a route.")
-            else:
-                pano_attack_driving_same.append(route)
-        if count_miss:
-            pano_attack_driving_same.extend(self.driving_same(count_miss, num_point))
-        return pano_attack_driving_same
-
-    def generate_route(self, pano_init, num_point, attack=True):
-        route = []
+    def generate_route(
+        self, pano_init, num_point, route=[], attack=True,
+    ):
+        num_exist = len(route)
         pano = pano_init
-        for idx in range(num_point):
+        for idx in range(num_exist, num_exist + num_point):
             if not route:
                 pano_nxt_id = pano["neighbor"][0]
             else:
@@ -130,9 +117,41 @@ def test_generate_route():
     routesDF.to_csv(filename, index=False, header=header, mode="a")
 
 
+def test_generate_route_longer():
+    test = Attacker("../results/pano_text.json")
+    filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate.csv"
+    routesDF = pd.read_csv(filename, index_col=["route_id"])
+    routes_num = int(routesDF.index[-1] + 1)
+    routes_dict = {"route_id": [], "pano_id": []}
+    coords = {"lats": [], "lngs": [], "lats_attack": [], "lngs_attack": []}
+    for route_id in range(routes_num):
+        route = []
+        routeDF = routesDF.loc[route_id]
+        for step in range(len(routeDF)):
+            pano_id = routeDF.iloc[step]["pano_id"]
+            pano = test.dataset[pano_id]
+            pano["lat_attack"] = routeDF.iloc[step]["lats_attack"]
+            pano["lng_attack"] = routeDF.iloc[step]["lngs_attack"]
+            route.append(pano)
+
+        route = test.generate_route(route[-1], 49, route)
+        for pano in route:
+            routes_dict["route_id"].append(route_id)
+            routes_dict["pano_id"].append(pano["id"])
+            coords["lats"].append(pano["lat"])
+            coords["lngs"].append(pano["lng"])
+            coords["lats_attack"].append(pano["lat_attack"])
+            coords["lngs_attack"].append(pano["lng_attack"])
+    Utility.visualize_map(coords)
+    routesDF = pd.DataFrame({**routes_dict, **coords})
+    filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer.csv"
+    header = not os.path.exists(filename)
+    routesDF.to_csv(filename, index=False, header=header, mode="a")
+
+
 if __name__ == "__main__":
     # test = Attacker("../results/pano_text.json")
     # test_pano_attack_random = test.random(10)
     # print(test_pano_attack_random)
 
-    test_generate_route()
+    test_generate_route_longer()

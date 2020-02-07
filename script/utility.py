@@ -1,17 +1,19 @@
 # -*- coding:utf-8 -*-
 import io
 import os
-import scipy
 import random
-import geocoder
+
+import geopy
 import numpy as np
+import scipy
 import pandas as pd
+import geocoder
+import plotly.express as px
+import matplotlib.image as mpimg
+import matplotlib.pyplot as plt
 from PIL import Image
 from scipy import signal
-import plotly.express as px
 from dynaconf import settings
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
 from statsmodels.distributions.empirical_distribution import ECDF
 
 NORTHERNMOST = 49.0
@@ -98,6 +100,14 @@ class Utility:
         dst.paste(_im1, (0, 0))
         dst.paste(_im2, (_im1.width, 0))
         return dst
+
+    @staticmethod
+    def distance_route(route):
+        dist = 0
+        for start, end in zip(route[:-1], route[1:]):
+            coor_start, coor_end = (start["lat"], start["lng"]), (end["lat"], end["lng"])
+            dist += geopy.distance.distance(coor_start, coor_end)
+        return dist
 
 
 def test_concat_images():

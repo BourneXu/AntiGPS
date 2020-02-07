@@ -9,14 +9,15 @@
 # Copyright (c) 2020
 ###
 
-from keras.layers import Dense, Dropout, LSTM, Embedding
-from keras.preprocessing.sequence import pad_sequences
-from keras.models import Sequential
+import pickle
+
+import numpy as np
+import pandas as pd
 from loguru import logger
 from fuzzywuzzy import fuzz
-import pandas as pd
-import numpy as np
-import pickle
+from keras.layers import LSTM, Dense, Dropout, Embedding
+from keras.models import Sequential
+from keras.preprocessing.sequence import pad_sequences
 
 
 class Decider:
@@ -83,4 +84,3 @@ def test_lstm():
 
 if __name__ == "__main__":
     test_lstm()
-
