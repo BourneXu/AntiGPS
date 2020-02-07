@@ -33,6 +33,22 @@ class AntiGPS:
         self.feature = Feature()
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(120))
+    def get_poi_azure(self, credentials, radius=50):
+        logger.debug(f"Getting Azure POIs around {credentials['lat']}, {credentials['lng']}")
+        credentials["radius"] = radius
+        credentials["subscription_key"] = settings.AZUREAPI.subscription_key
+        headers = {"x-ms-client-id": settings.AZUREAPI.client_id}
+
+        url = "https://atlas.microsoft.com/search/nearby/json?subscription-key={subscription_key}&api-version=1.0&lat={lat}&lon={lng}&radius={radius}".format(
+            **credentials
+        )
+        r = requests.get(url, headers=headers)
+        if r.status_code != 200:
+            logger.warning(f"{r.json}")
+            raise ValueError("No POIs around available")
+        return r.json()
+
+    @retry(stop=stop_after_attempt(3), wait=wait_fixed(120))
     def get_streetview(self, credentials):
         logger.debug(f"Getting Street View with heading {credentials['heading']}")
         credentials["apikey"] = settings.GOOGLEAPI
@@ -236,6 +252,13 @@ class AntiGPS:
         # return data
 
 
+def test_get_poi():
+    test_antigps = AntiGPS()
+    credential_test = {"lat": 40.7461106, "lng": -73.9941583}
+    pois = test_antigps.get_poi_azure(credential_test)
+    print(pois)
+
+
 def test_get_streetview():
     test_antigps = AntiGPS()
     databaseDir = settings.LEVELDB.dir
@@ -272,4 +295,5 @@ if __name__ == "__main__":
     # test_antigps.extract_text()
 
     # test_attack_defense()
-    test_generate_train_data()
+    # test_generate_train_data()
+    test_get_poi()

@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
+import io
 import sys
+
+import pandas as pd
+import plyvel
+import plotly.express as px
+import matplotlib.image as mpimg
+from PIL import Image
+from tqdm import tqdm
+from dynaconf import settings
+from matplotlib import pyplot as plt
+
+from proto import streetlearn_pb2
 
 sys.path.append("..")
 
-import io
-import plyvel
-import pandas as pd
-from tqdm import tqdm
-from PIL import Image
-from proto import streetlearn_pb2
-import plotly.express as px
-from dynaconf import settings
-from matplotlib import pyplot as plt
-import matplotlib.image as mpimg
 
 
 class Deserialize:

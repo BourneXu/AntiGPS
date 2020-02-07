@@ -2,6 +2,7 @@ data/
 config/
 results/
 .vscode/
+database/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

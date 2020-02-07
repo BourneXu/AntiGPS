@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 19:46:23
 # -----
-# Last Modified: 2020-01-19 20:03:49
+# Last Modified: 2020-02-06 23:43:20
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -59,7 +59,7 @@ class Decider:
             )
         )
         model.add(Dropout(0.5))
-        model.add(LSTM(output_dim=256, activation="sigmoid", inner_activation="hard_sigmoid",))
+        model.add(LSTM(output_dim=256, activation="sigmoid", inner_activation="hard_sigmoid"))
         model.add(Dropout(0.5))
         model.add(Dense(1, activation="sigmoid"))
 
