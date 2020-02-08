@@ -3,12 +3,13 @@
 # @Author: Chris
 # Created Date: 2020-01-02 21:16:28
 # -----
-# Last Modified: 2020-02-06 23:50:05
+# Last Modified: 2020-02-07 19:03:07
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
 ###
 import os
+import copy
 import json
 import random
 
@@ -60,9 +61,9 @@ class Attacker:
                 route = self.generate_route(pano, num_point, attack=attack)
                 if route:
                     break
-            if not route:
+            if len(route) < num_point:
                 count_miss += 1
-                logger.warning(f"{pano['id']} can not find a route.")
+                logger.warning(f"{pano['id']} can not find a route with {num_point} points.")
             else:
                 pano_attack_driving.append(route)
         if count_miss:
@@ -79,7 +80,7 @@ class Attacker:
                 pano_nxt_id = pano["neighbor"][0]
             else:
                 if len(pano["neighbor"]) == 1:
-                    return []
+                    return route
                 pano_nxt_id = random.choice(pano["neighbor"])
                 while pano_nxt_id == route[idx - 1]["id"]:
                     pano_nxt_id = random.choice(pano["neighbor"])
@@ -96,8 +97,21 @@ class Attacker:
             pano = self.dataset[pano_nxt_id]
         return route
 
-    def generate_route_longer(self, route, add_point, attack=True):
-        pass
+    def read_route(self, filename):
+        routesDF = pd.read_csv(filename, index_col=["route_id"])
+        routes_num = int(routesDF.index[-1] + 1)
+        routes = []
+        for route_id in range(routes_num):
+            route = []
+            routeDF = routesDF.loc[route_id]
+            for step in range(len(routeDF)):
+                pano_id = routeDF.iloc[step]["pano_id"]
+                pano = self.dataset[pano_id]
+                pano["lat_attack"] = routeDF.iloc[step]["lats_attack"]
+                pano["lng_attack"] = routeDF.iloc[step]["lngs_attack"]
+                route.append(pano)
+            routes.append(route)
+        return routes
 
 
 def test_generate_route():
@@ -138,7 +152,18 @@ def test_generate_route_longer():
             pano["lng_attack"] = routeDF.iloc[step]["lngs_attack"]
             route.append(pano)
 
-        route = test.generate_route(route[-1], 49, route)
+        route_default = copy.deepcopy(route)
+        for _ in range(5):
+            route = test.generate_route(route[-1], 49, route)
+            if len(route) < 99:
+                route = test.generate_route(route[0], 99 - len(route), route[::-1])
+            if len(route) < 99:
+                route = route_default
+            else:
+                break
+        if len(route) < 99:
+            logger.warning(f"route {route_id} cannot be produced")
+            continue
         for pano in route:
             routes_dict["route_id"].append(route_id)
             routes_dict["pano_id"].append(pano["id"])
@@ -152,8 +177,7 @@ def test_generate_route_longer():
     Utility.visualize_map(coords)
     routesDF = pd.DataFrame({**routes_dict, **coords})
     filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer.csv"
-    header = not os.path.exists(filename)
-    routesDF.to_csv(filename, index=False, header=header, mode="w")
+    routesDF.to_csv(filename, index=False, header=True, mode="w")
 
 
 if __name__ == "__main__":

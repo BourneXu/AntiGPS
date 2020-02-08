@@ -10,6 +10,7 @@ import hashlib
 import warnings
 
 import pandas as pd
+import plyvel
 import requests
 from PIL import Image
 from tqdm import tqdm
@@ -33,7 +34,7 @@ class AntiGPS:
         self.feature = Feature()
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(120))
-    def get_poi_azure(self, credentials, radius=50):
+    def get_poi_azure(self, credentials: dict, radius=50) -> dict:
         logger.debug(f"Getting Azure POIs around {credentials['lat']}, {credentials['lng']}")
         credentials["radius"] = radius
         credentials["subscription_key"] = settings.AZUREAPI.subscription_key
@@ -259,6 +260,23 @@ def test_get_poi():
     print(pois)
 
 
+def test_get_poi_dataset():
+    test_antigps = AntiGPS()
+    db = plyvel.DB(settings.LEVELDB.poi, create_if_missing=True)
+    filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer.csv"
+    routes = test_antigps.attacker.read_route(filename)
+    routes_num, routes_slot = len(routes), round(len(routes) / 3)
+    for route in tqdm(routes[routes_slot:]):
+        for pano in route:
+            key = (str(pano["lat"]) + "_" + str(pano["lng"])).encode()
+            if db.get(key) == None:
+                pois = test_antigps.get_poi_azure(pano)
+                db.put(key, json.dumps(pois).encode())
+            else:
+                logger.warning(f"{key} is existing")
+    db.close()
+
+
 def test_get_streetview():
     test_antigps = AntiGPS()
     databaseDir = settings.LEVELDB.dir
@@ -296,4 +314,5 @@ if __name__ == "__main__":
 
     # test_attack_defense()
     # test_generate_train_data()
-    test_get_poi()
+    # test_get_poi()
+    test_get_poi_dataset()
