@@ -8,12 +8,15 @@ import time
 import pickle
 import hashlib
 import warnings
+import concurrent.futures
 
+import numpy as np
 import pandas as pd
 import plyvel
 import requests
 from PIL import Image
 from tqdm import tqdm
+from atpbar import atpbar
 from loguru import logger
 from dynaconf import settings
 from tenacity import *
@@ -182,16 +185,29 @@ class AntiGPS:
         resultDF.to_csv("./results/defense_result.csv", mode="a", index=False, header=False)
         logger.info(f"Defensed {pano_attack['id']}")
 
+    def init_traindb(self):
+        """
+        Initialize training data levelDB database
+        """
+        self.db_feature = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/features/", create_if_missing=True
+        )
+        self.db_attack = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/train_data_attack/", create_if_missing=True
+        )
+        self.db_noattack = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/train_data_noattack/", create_if_missing=True
+        )
+
     # TODO: Real system get only one pano from car cam with GPS info
     def generate_feature_vector(self, pano: bytes):
         pass
 
     # TODO: For real system, input should be two pano bytes or image objects
     def generate_feature_vector_local(self, pano_id, pano_id_attack, google=False):
-        db = plyvel.DB("/home/bourne/Workstation/AntiGPS/results/features/", create_if_missing=True)
         key = pano_id.encode("utf-8")
-        if db.get(key):
-            feature_vector = pickle.loads(db.get(key))
+        if self.db_feature.get(key):
+            feature_vector = pickle.loads(self.db_feature.get(key))
         else:
             feature_vector = []
             feature_vector.extend(
@@ -200,12 +216,12 @@ class AntiGPS:
                 )
             )
             feature_vector.extend(self.feature.sentence_vector(self.attacker.dataset[pano_id]))
-            db.put(key, pickle.dumps(feature_vector))
+            self.db_feature.put(key, pickle.dumps(feature_vector))
         ## google means get attack pano from google API. Otherwise get attack pano from local database
         if not google:
             key = pano_id_attack.encode("utf-8")
-            if db.get(key):
-                feature_vector.extend(pickle.loads(db.get(key)))
+            if self.db_feature.get(key):
+                feature_vector.extend(pickle.loads(self.db_feature.get(key)))
             else:
                 feature_vector_attack = []
                 feature_vector_attack.extend(
@@ -217,70 +233,102 @@ class AntiGPS:
                     self.feature.sentence_vector(self.attacker.dataset[pano_id_attack])
                 )
                 feature_vector.extend(feature_vector_attack)
-                db.put(key, pickle.dumps(feature_vector_attack))
+                self.db_feature.put(key, pickle.dumps(feature_vector_attack))
         else:
             key = (pano_id_attack + "_google").encode("utf-8")
-            if db.get(key):
-                feature_vector.extend(pickle.loads(db.get(key)))
+            if self.db_feature.get(key):
+                feature_vector.extend(pickle.loads(self.db_feature.get(key)))
             else:
                 image, image_path = self.get_pano_google(self.attacker.dataset[pano_id_attack])
                 ocr_results = self.ocr(image_path)
                 feature_vector_attack = self.feature.textbox_position(ocr_results)
                 feature_vector_attack.extend(self.feature.sentence_vector(ocr_results))
                 feature_vector.extend(feature_vector_attack)
-                db.put(key, pickle.dumps(feature_vector_attack))
+                self.db_feature.put(key, pickle.dumps(feature_vector_attack))
         return feature_vector
 
-    def generate_train_data(self, filename, attack=True, noattack=True):
-        ## Initialize training data levelDB database
-        db_attack = plyvel.DB(
-            "/home/bourne/Workstation/AntiGPS/results/train_data_attack/", create_if_missing=True
-        )
-        db_noattack = plyvel.DB(
-            "/home/bourne/Workstation/AntiGPS/results/train_data_noattack/", create_if_missing=True
-        )
+    def get_route_todo(self, routes_ids: list, db, thread=1) -> list:
+        if thread < 2:
+            return [routes_ids]
+        routes_done = {k.decode() for k, v in db}
+        route_todo = list(set([str(x) for x in routes_ids]) - routes_done)
+        logger.debug(f"done {len(routes_done)}, todo {len(route_todo)}")
+        return np.array_split(route_todo, thread)
+
+    def generate_train_data(self, filename, attack=True, noattack=True, thread=5):
         routesDF = pd.read_csv(filename, index_col=["route_id"])
         routes_num = int(routesDF.index[-1] + 1)
         routes_slot = round(routes_num / 3)
         ## LSTM input data N (routes) x M (time steps) x W (features)
         if attack:
+
+            def generate_train_data_attack(routes_todo, thread_id):
+                for route_id in atpbar(routes_todo, name=f"Thread: {thread_id}"):
+                    key = str(route_id).encode("utf-8")
+                    if self.db_attack.get(key):
+                        continue
+                    data_route = []
+                    routeDF = routesDF.loc[route_id]
+                    for step in range(len(routeDF)):
+                        pano_id, pano_id_attack = (
+                            routeDF.iloc[step]["pano_id"],
+                            routesDF.iloc[step + routes_slot]["pano_id"],
+                        )
+                        data_route.append(
+                            self.generate_feature_vector_local(pano_id, pano_id_attack)
+                        )
+                    self.db_attack.put(key, pickle.dumps(data_route))
+                return f"done {len(routes_todo)}"
+
             logger.info("Generating training data for attacking")
-            data_attack = []
-            for route_id in tqdm(range(routes_slot)):
-                key = str(route_id).encode("utf-8")
-                if db_attack.get(key):
-                    continue
-                data_route = []
-                routeDF = routesDF.loc[route_id]
-                for step in range(len(routeDF)):
-                    pano_id, pano_id_attack = (
-                        routeDF.iloc[step]["pano_id"],
-                        routesDF.iloc[step + routes_slot]["pano_id"],
-                    )
-                    data_route.append(self.generate_feature_vector_local(pano_id, pano_id_attack))
-                db_attack.put(key, pickle.dumps(data_route))
+            routes_todos = self.get_route_todo(list(range(routes_slot)), self.db_attack, thread)
+            # TODO: Figure out locks in threading
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                r = [
+                    executor.submit(generate_train_data_attack, routes_todos[i], i)
+                    for i in range(thread)
+                ]
+                for re in concurrent.futures.as_completed(r):
+                    logger.debug(re.result())
+                results = [re.result() for re in r]
+                logger.debug(f"All done with {results}")
 
         if noattack:
-            logger.info("Generating training data for non-attacking")
-            data_noattack = []
-            for route_id in tqdm(range(2 * routes_slot, 3 * routes_slot)):
-                key = str(route_id).encode("utf-8")
-                if db_attack.get(key):
-                    continue
-                data_route = []
-                routeDF = routesDF.loc[route_id]
-                for step in range(len(routeDF)):
-                    pano_id, pano_id_attack = (
-                        routeDF.iloc[step]["pano_id"],
-                        routeDF.iloc[step]["pano_id"],
-                    )
-                    data_route.append(
-                        self.generate_feature_vector_local(pano_id, pano_id_attack, google=True)
-                    )
-                db_noattack.put(key, pickle.dumps(data_route))
 
-        db_attack.close()
-        db_noattack.close()
+            def generate_train_data_noattack(routes_todo, thread_id):
+                for route_id in atpbar(routes_todo, name=f"Thread: {thread_id}"):
+                    key = str(route_id).encode("utf-8")
+                    if self.db_noattack.get(key):
+                        continue
+                    data_route = []
+                    routeDF = routesDF.loc[route_id]
+                    for step in range(len(routeDF)):
+                        pano_id, pano_id_attack = (
+                            routeDF.iloc[step]["pano_id"],
+                            routeDF.iloc[step]["pano_id"],
+                        )
+                        data_route.append(
+                            self.generate_feature_vector_local(pano_id, pano_id_attack, google=True)
+                        )
+                    self.db_noattack.put(key, pickle.dumps(data_route))
+                return f"done {len(routes_todo)}"
+
+            logger.info("Generating training data for non-attacking")
+            routes_todos = self.get_route_todo(
+                list(range(2 * routes_slot, 3 * routes_slot)), self.db_noattack, thread
+            )
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                r = [
+                    executor.submit(generate_train_data_noattack, routes_todos[i], i)
+                    for i in range(thread)
+                ]
+                for re in concurrent.futures.as_completed(r):
+                    logger.debug(re.result())
+                results = [re.result() for re in r]
+                logger.debug(f"All done with {results}")
+
+        self.db_attack.close()
+        self.db_noattack.close()
 
 
 def test_get_poi():
@@ -334,7 +382,8 @@ def test_attack_defense():
 def test_generate_train_data():
     antigps = AntiGPS()
     filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer_split.csv"
-    antigps.generate_train_data(filename, attack=True)
+    antigps.init_traindb()
+    antigps.generate_train_data(filename, attack=True, thread=1)
     # print(len(data), len(data[0]), len(data[0][0]))
 
 
