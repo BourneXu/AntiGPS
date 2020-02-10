@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 21:16:28
 # -----
-# Last Modified: 2020-02-07 19:03:07
+# Last Modified: 2020-02-09 20:25:18
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -26,6 +26,7 @@ class Attacker:
         self.__loaddata()
 
     def __loaddata(self):
+        logger.info("Loading local pano dataset ...")
         self.dataset = {}
         with open(self.datafile, "r") as fin:
             for line in tqdm(fin.readlines()):
@@ -36,6 +37,7 @@ class Attacker:
         return random.sample(list(self.dataset.values()), num)
 
     def random(self, num):
+        logger.info("Generating random attack points")
         pano_attack = random.sample(list(self.dataset.values()), num)
         pano_attack_random = []
         for pano in pano_attack:
@@ -52,6 +54,7 @@ class Attacker:
         pass
 
     def driving(self, num_route, num_point, attack=True):
+        logger.info("Generating mock driving routes...")
         logger.info(f"Generating {num_route} routes with {num_point} points")
         pano_init = random.sample(list(self.dataset.values()), num_route)
         pano_attack_driving = []
@@ -97,7 +100,8 @@ class Attacker:
             pano = self.dataset[pano_nxt_id]
         return route
 
-    def read_route(self, filename):
+    def read_route(self, filename: str) -> list:
+        logger.info("Reading route from %s" % filename)
         routesDF = pd.read_csv(filename, index_col=["route_id"])
         routes_num = int(routesDF.index[-1] + 1)
         routes = []
@@ -112,6 +116,32 @@ class Attacker:
                 route.append(pano)
             routes.append(route)
         return routes
+
+    def write_route(self, routes: list, filename: str):
+        logger.info("Writing routes to %s" % filename)
+        routes_dict = {"route_id": [], "pano_id": []}
+        coords = {"lats": [], "lngs": [], "lats_attack": [], "lngs_attack": []}
+        for idx, route in enumerate(routes):
+            for pano in route:
+                routes_dict["route_id"].append(idx)
+                routes_dict["pano_id"].append(pano["id"])
+                coords["lats"].append(pano["lat"])
+                coords["lngs"].append(pano["lng"])
+                coords["lats_attack"].append(pano.get("lat_attack", None))
+                coords["lngs_attack"].append(pano.get("lat_attack", None))
+        routesDF = pd.DataFrame({**routes_dict, **coords})
+        routesDF.to_csv(filename, index=False, header=True, mode="w")
+
+    def split_route(self, routes: list, points: int):
+        routes_new = []
+        routes_num = len(routes)
+        for idx, route in enumerate(routes):
+            if len(route) < points:
+                logger.warning(f"Route {idx} doesn't have enough points")
+                continue
+            for i in range(len(route) - points + 1):
+                routes_new.append(route[i : points + i])
+        return routes_new
 
 
 def test_generate_route():
@@ -180,9 +210,19 @@ def test_generate_route_longer():
     routesDF.to_csv(filename, index=False, header=True, mode="w")
 
 
+def test_split_route():
+    test = Attacker("../results/pano_text.json")
+    fin = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer.csv"
+    routes = test.read_route(fin)
+    routes = test.split_route(routes, 50)
+    fout = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer_split.csv"
+    test.write_route(routes, fout)
+
+
 if __name__ == "__main__":
     # test = Attacker("../results/pano_text.json")
     # test_pano_attack_random = test.random(10)
     # print(test_pano_attack_random)
 
-    test_generate_route_longer()
+    # test_generate_route_longer()
+    test_split_route()

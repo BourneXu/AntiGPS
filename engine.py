@@ -182,32 +182,63 @@ class AntiGPS:
         resultDF.to_csv("./results/defense_result.csv", mode="a", index=False, header=False)
         logger.info(f"Defensed {pano_attack['id']}")
 
+    # TODO: Real system get only one pano from car cam with GPS info
+    def generate_feature_vector(self, pano: bytes):
+        pass
+
     # TODO: For real system, input should be two pano bytes or image objects
     def generate_feature_vector_local(self, pano_id, pano_id_attack, google=False):
-        feature_vector = []
-        feature_vector.extend(
-            self.feature.textbox_position(self.attacker.dataset[pano_id], height=408, width=1632)
-        )
-        feature_vector.extend(self.feature.sentence_vector(self.attacker.dataset[pano_id]))
-        ## google means get attack pano from google API. Otherwise get pano from local database
-        if not google:
+        db = plyvel.DB("/home/bourne/Workstation/AntiGPS/results/features/", create_if_missing=True)
+        key = pano_id.encode("utf-8")
+        if db.get(key):
+            feature_vector = pickle.loads(db.get(key))
+        else:
+            feature_vector = []
             feature_vector.extend(
                 self.feature.textbox_position(
-                    self.attacker.dataset[pano_id_attack], height=408, width=1632
+                    self.attacker.dataset[pano_id], height=408, width=1632
                 )
             )
-            feature_vector.extend(
-                self.feature.sentence_vector(self.attacker.dataset[pano_id_attack])
-            )
+            feature_vector.extend(self.feature.sentence_vector(self.attacker.dataset[pano_id]))
+            db.put(key, pickle.dumps(feature_vector))
+        ## google means get attack pano from google API. Otherwise get attack pano from local database
+        if not google:
+            key = pano_id_attack.encode("utf-8")
+            if db.get(key):
+                feature_vector.extend(pickle.loads(db.get(key)))
+            else:
+                feature_vector_attack = []
+                feature_vector_attack.extend(
+                    self.feature.textbox_position(
+                        self.attacker.dataset[pano_id_attack], height=408, width=1632
+                    )
+                )
+                feature_vector_attack.extend(
+                    self.feature.sentence_vector(self.attacker.dataset[pano_id_attack])
+                )
+                feature_vector.extend(feature_vector_attack)
+                db.put(key, pickle.dumps(feature_vector_attack))
         else:
-            image, image_path = self.get_pano_google(self.attacker.dataset[pano_id_attack])
-            ocr_results = self.ocr(image_path)
-            feature_vector.extend(self.feature.textbox_position(ocr_results))
-            feature_vector.extend(self.feature.sentence_vector(ocr_results))
+            key = (pano_id_attack + "_google").encode("utf-8")
+            if db.get(key):
+                feature_vector.extend(pickle.loads(db.get(key)))
+            else:
+                image, image_path = self.get_pano_google(self.attacker.dataset[pano_id_attack])
+                ocr_results = self.ocr(image_path)
+                feature_vector_attack = self.feature.textbox_position(ocr_results)
+                feature_vector_attack.extend(self.feature.sentence_vector(ocr_results))
+                feature_vector.extend(feature_vector_attack)
+                db.put(key, pickle.dumps(feature_vector_attack))
         return feature_vector
 
-    def generate_train_data(self, attack=True, noattack=True):
-        filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate.csv"
+    def generate_train_data(self, filename, attack=True, noattack=True):
+        ## Initialize training data levelDB database
+        db_attack = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/train_data_attack/", create_if_missing=True
+        )
+        db_noattack = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/train_data_noattack/", create_if_missing=True
+        )
         routesDF = pd.read_csv(filename, index_col=["route_id"])
         routes_num = int(routesDF.index[-1] + 1)
         routes_slot = round(routes_num / 3)
@@ -216,6 +247,9 @@ class AntiGPS:
             logger.info("Generating training data for attacking")
             data_attack = []
             for route_id in tqdm(range(routes_slot)):
+                key = str(route_id).encode("utf-8")
+                if db_attack.get(key):
+                    continue
                 data_route = []
                 routeDF = routesDF.loc[route_id]
                 for step in range(len(routeDF)):
@@ -224,16 +258,15 @@ class AntiGPS:
                         routesDF.iloc[step + routes_slot]["pano_id"],
                     )
                     data_route.append(self.generate_feature_vector_local(pano_id, pano_id_attack))
-                data_attack.append(data_route)
+                db_attack.put(key, pickle.dumps(data_route))
 
-            with open(
-                "/home/bourne/Workstation/AntiGPS/results/data_attack_lstm.pkl", "wb"
-            ) as fout:
-                pickle.dump(data_attack, fout, protocol=pickle.HIGHEST_PROTOCOL)
         if noattack:
             logger.info("Generating training data for non-attacking")
             data_noattack = []
             for route_id in tqdm(range(2 * routes_slot, 3 * routes_slot)):
+                key = str(route_id).encode("utf-8")
+                if db_attack.get(key):
+                    continue
                 data_route = []
                 routeDF = routesDF.loc[route_id]
                 for step in range(len(routeDF)):
@@ -244,13 +277,10 @@ class AntiGPS:
                     data_route.append(
                         self.generate_feature_vector_local(pano_id, pano_id_attack, google=True)
                     )
-                data_noattack.append(data_route)
+                db_noattack.put(key, pickle.dumps(data_route))
 
-            with open(
-                "/home/bourne/Workstation/AntiGPS/results/data_noattack_lstm.pkl", "wb"
-            ) as fout:
-                pickle.dump(data_noattack, fout, protocol=pickle.HIGHEST_PROTOCOL)
-        # return data
+        db_attack.close()
+        db_noattack.close()
 
 
 def test_get_poi():
@@ -303,7 +333,8 @@ def test_attack_defense():
 
 def test_generate_train_data():
     antigps = AntiGPS()
-    data = antigps.generate_train_data(attack=False)
+    filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer_split.csv"
+    antigps.generate_train_data(filename, attack=True)
     # print(len(data), len(data[0]), len(data[0][0]))
 
 
@@ -313,6 +344,6 @@ if __name__ == "__main__":
     # test_antigps.extract_text()
 
     # test_attack_defense()
-    # test_generate_train_data()
+    test_generate_train_data()
     # test_get_poi()
-    test_get_poi_dataset()
+    # test_get_poi_dataset()
