@@ -6,7 +6,6 @@ from collections import defaultdict
 import numpy as np
 from loguru import logger
 from sklearn.cluster import SpectralClustering
-
 from sentence_transformers import SentenceTransformer
 
 
@@ -68,6 +67,25 @@ class Feature:
                 sentence += " " + text_groups[group].strip(" ")
         sentence_embeddings = self.sentence_model.encode([sentence.strip(" ")])
         return sentence_embeddings[0]
+
+    def poi_vector(self, pois: dict, method=1):
+        """Get vectors from POI dict
+        
+        Arguments:
+            pois {dict} -- POI info from Azure API
+        
+        Keyword Arguments:
+            method {int} -- (default: {1})
+            Strategy: 1. directly merge top 5 POI text 
+        """
+        if method == 1:
+            results, sentence = pois["results"], ""
+            for idx in range(min(len(results), 5)):
+                sentence += results[idx]["poi"]["name"] + " "
+            sentence_embeddings = self.sentence_model.encode([sentence.strip(" ")])
+            return sentence_embeddings[0]
+        else:
+            raise ValueError("Only support method == 1")
 
     def sent2vec(self, sentences):
         return self.sentence_model.encode(sentences)
