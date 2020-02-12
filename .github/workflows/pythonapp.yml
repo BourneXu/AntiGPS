@@ -25,14 +25,6 @@ jobs:
       #         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
       - name: Codecov
         uses: codecov/codecov-action@v1.0.5
-        with:
-          token: b6f07844-7da3-49f7-aef9-bbad9844b590 #required
-          file: ./coverage.xml #optional
-          flags: unittests #optional
-          name: codecov-umbrella #optional
-          yml: ./codecov.yml #optional
-          fail_ci_if_error: true #optional (default = false)
-
 #     - name: Test with pytest
 #       run: |
 #         pip install pytest
