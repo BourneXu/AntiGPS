@@ -6,7 +6,6 @@ import pandas as pd
 import plyvel
 import plotly.express as px
 import matplotlib.image as mpimg
-from PIL import Image
 from tqdm import tqdm
 from dynaconf import settings
 from matplotlib import pyplot as plt
@@ -14,7 +13,6 @@ from matplotlib import pyplot as plt
 from proto import streetlearn_pb2
 
 sys.path.append("..")
-
 
 
 class Deserialize:
@@ -51,10 +49,6 @@ class Deserialize:
 
     @staticmethod
     def visualize_pano(pano: streetlearn_pb2.Pano):
-        ## PIL raise memory error if image is large
-        # image = Image.open(io.BytesIO(pano.compressed_image))
-        # image.show()
-
         img = mpimg.imread(io.BytesIO(pano.compressed_image), format="JPG")
         plt.imshow(img)
         plt.show()

@@ -1,11 +1,11 @@
 # TODO: feature engineering
 import bisect
-import operator
 from collections import defaultdict
 
 import numpy as np
 from loguru import logger
 from sklearn.cluster import SpectralClustering
+
 from sentence_transformers import SentenceTransformer
 
 
@@ -76,7 +76,7 @@ class Feature:
         
         Keyword Arguments:
             method {int} -- (default: {1})
-            Strategy: 1. directly merge top 5 POI text 
+            Strategy: 1. directly merge top 5 POI text
         """
         if method == 1:
             results, sentence = pois["results"], ""

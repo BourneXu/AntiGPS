@@ -3,8 +3,6 @@ import io
 import os
 import random
 
-import numpy as np
-import scipy
 import pandas as pd
 import geocoder
 import plotly.express as px
@@ -12,7 +10,6 @@ import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from PIL import Image
 from geopy import distance
-from scipy import signal
 from dynaconf import settings
 from statsmodels.distributions.empirical_distribution import ECDF
 
@@ -47,10 +44,6 @@ class Utility:
 
     @staticmethod
     def plot_cdf(xarray):
-        # xarray_sorted = np.sort(xarray)
-        # percent = 1.0 * np.arange(len(xarray)) / (len(xarray) - 1)
-        # line = plt.plot(xarray_sorted, percent)
-
         ecdf = ECDF(xarray)
         line = plt.plot(ecdf.x, ecdf.y * 100)
         return line
@@ -111,8 +104,6 @@ class Utility:
 
 
 def test_concat_images():
-    import os
-
     folder = "../results/google_img/"
     image_files = os.listdir(folder)
     img_names = set([x.split("_")[0] for x in image_files])

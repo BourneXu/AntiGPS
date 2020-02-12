@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 14:55:25
 # -----
-# Last Modified: 2020-01-02 19:26:33
+# Last Modified: 2020-02-12 11:23:20
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -37,9 +37,9 @@ class Analysis:
                 self.pano_analysis = self.pano_analysis.append(info, ignore_index=True)
 
     def plot_text_cdf(self, filename):
-        fig, ax = plt.subplots()
-        line1 = Utility.plot_cdf(self.pano_analysis["total"])
-        line2 = Utility.plot_cdf(self.pano_analysis["g95"])
+        _, ax = plt.subplots()
+        _ = Utility.plot_cdf(self.pano_analysis["total"])
+        _ = Utility.plot_cdf(self.pano_analysis["g95"])
         ax.set_title("CDF of text boxes number")
         ax.legend(["total", "g95"])
         ax.xaxis.set_label_text("Number of text boxes")

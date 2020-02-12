@@ -4,11 +4,9 @@ import os
 import sys
 import copy
 import json
-import time
 import pickle
 import hashlib
 import warnings
-import threading
 import concurrent.futures
 
 import numpy as np
@@ -17,11 +15,11 @@ import plyvel
 import requests
 from PIL import Image
 from tqdm import tqdm
-from atpbar import atpbar
 from loguru import logger
 from dynaconf import settings
 from tenacity import *
 
+from atpbar import atpbar
 from script.decider import Decider
 from script.feature import Feature
 from script.utility import Utility
@@ -36,7 +34,6 @@ class AntiGPS:
     def __init__(self):
         self.attacker = Attacker("./results/pano_text.json")
         self.feature = Feature()
-        self.lock = threading.Lock()
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(120))
     def get_poi_azure(self, credentials: dict, radius=50) -> dict:
@@ -90,7 +87,7 @@ class AntiGPS:
             ## requests Google API
             pano_120 = []
             with open("./results/google_img.csv", "a") as fin:
-                for idx, degree in enumerate([-120, 0, 120]):
+                for _, degree in enumerate([-120, 0, 120]):
                     cred = copy.deepcopy(credentials)
                     cred["heading"] += degree
                     img = self.get_streetview(cred)
@@ -174,7 +171,7 @@ class AntiGPS:
         else:
             lat, lng = pano_attack["lat"], pano_attack["lng"]
 
-        pano_google, img_path = self.get_pano_google(pano_attack)
+        _, img_path = self.get_pano_google(pano_attack)
         text_defense_list = []
         for i_path in img_path:
             info_ocr = self.ocr(i_path)
@@ -239,7 +236,7 @@ class AntiGPS:
 
     # TODO: For real system, input should be two pano bytes or image objects
     def generate_feature_vector_local(self, pano_id, pano_id_attack, valid="default"):
-        """Locally generate feature vectors with three validation methods: 
+        """Locally generate feature vectors with three validation methods:
         1. local database (default); 
         2. Google Street View APIs (google); 
         3. Azure POIs API (poi)

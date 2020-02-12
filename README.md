@@ -6,7 +6,7 @@
 ## Application Scenario
 
 ## Infrastructure
-#![AntiGPS](intro/infrastructure.png)
+![AntiGPS](intro/infrastructure.png)
 
 ## Preprocessing 
 

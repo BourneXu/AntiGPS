@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 19:46:23
 # -----
-# Last Modified: 2020-02-11 23:24:42
+# Last Modified: 2020-02-12 11:34:42
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -13,14 +13,14 @@ import pickle
 import concurrent.futures
 
 import numpy as np
-import pandas as pd
 import plyvel
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 from scipy import spatial
 from atpbar import flush, atpbar
 from loguru import logger
 from fuzzywuzzy import fuzz
-from keras.layers import LSTM, Dense, Dropout, Embedding
+from keras.layers import LSTM, Dense, Dropout
 from keras.models import Sequential
 from keras.preprocessing.sequence import pad_sequences
 
@@ -44,10 +44,10 @@ class Decider:
             "/home/bourne/Workstation/AntiGPS/results/train_data_noattack/"
         )
         self.db_attack_poi = plyvel.DB(
-            "/home/bourne/Workstation/AntiGPS/results/train_data_attack_poi/",
+            "/home/bourne/Workstation/AntiGPS/results/train_data_attack_poi/"
         )
         self.db_noattack_poi = plyvel.DB(
-            "/home/bourne/Workstation/AntiGPS/results/train_data_noattack_poi/",
+            "/home/bourne/Workstation/AntiGPS/results/train_data_noattack_poi/"
         )
 
     def close_traindb(self):
@@ -126,7 +126,6 @@ class Decider:
     def create_model(self, input_length, poi=False):
         logger.info("Creating model...")
         model = Sequential()
-        # model.add(Embedding(input_dim=188, output_dim=50, input_length=input_length))
         if poi:
             model.add(
                 LSTM(
@@ -197,9 +196,9 @@ def test_similarity_vector(poi=False):
     idx_attack = [idx for idx in range(len(y_train)) if y_train[idx] == 1]
     idx_noattack = [idx for idx in range(len(y_train)) if y_train[idx] == 0]
 
-    fig, ax = plt.subplots()
-    line1 = Utility.plot_cdf([similarities[idx] for idx in idx_attack])
-    line2 = Utility.plot_cdf([similarities[idx] for idx in idx_noattack])
+    _, ax = plt.subplots()
+    _ = Utility.plot_cdf([similarities[idx] for idx in idx_attack])
+    _ = Utility.plot_cdf([similarities[idx] for idx in idx_noattack])
     ax.set_title("CDF of vector similarities")
     ax.legend(["Attack", "Non-Attack"])
     ax.xaxis.set_label_text("Similarities")
