@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 19:46:23
 # -----
-# Last Modified: 2020-02-18 15:41:19
+# Last Modified: 2020-02-18 16:23:36
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -265,7 +265,7 @@ def test_lstm(modelpath=None, poi=False):
 def test_similarity_vector(poi=False):
     test = Decider()
     X_train, y_train, X_test, y_test = test.load_data(
-        sample=0.5, workers=10, routes_slot=5000, poi=poi
+        sample=0.6, workers=20, routes_slot=5000, poi=poi
     )
     similarities = test.compare_similarity(X_train, poi=poi)
     idx_attack = [idx for idx in range(len(y_train)) if y_train[idx] == 1]
@@ -274,7 +274,7 @@ def test_similarity_vector(poi=False):
     _, ax = plt.subplots()
     _ = Utility.plot_cdf([similarities[idx] for idx in idx_attack])
     _ = Utility.plot_cdf([similarities[idx] for idx in idx_noattack])
-    ax.set_title("CDF of vector similarities")
+    ax.set_title("CDF of vector similarities ({})".format("poi" if poi else "google"))
     ax.legend(["Attack", "Non-Attack"])
     ax.xaxis.set_label_text("Similarities")
     ax.yaxis.set_label_text("Percent")
@@ -299,15 +299,12 @@ def test_partial_attack_predict(modelpath, rates=[], valid="default"):
 
 
 if __name__ == "__main__":
-    poi = True
-    modelpath = None
-    # modelpath = "/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{}.h5".format(
-    #     poi * "poi"
-    # )
-    # test_lstm(modelpath=modelpath, poi=poi)
+    valid = "poi"
+    # modelpath = None
+    modelpath = f"/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{valid}.h5"
+    # test_lstm(modelpath=modelpath, poi=False)
     # test_similarity_vector()
 
-    valid = "poi"
     rates = [round(x * 0.1, 2) for x in range(0, 11)]
     acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid=valid)
     filename = f"/home/bourne/Workstation/AntiGPS/results/test_partial_attack_{valid}.png"

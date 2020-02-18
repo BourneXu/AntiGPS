@@ -539,11 +539,18 @@ class AntiGPS:
                 for idx, pano in enumerate(routes[int(key)]):
                     if idx in attack_idx:
                         pano_id, pano_id_attack = pano["id"], route_attack[idx]["id"]
-                        data_route.append(
-                            self.generate_feature_vector_local(
-                                pano_id, pano_id_attack, valid="default"
+                        if valid != "poi":
+                            data_route.append(
+                                self.generate_feature_vector_local(
+                                    pano_id, pano_id_attack, valid="default"
+                                )
                             )
-                        )
+                        else:
+                            data_route.append(
+                                self.generate_feature_vector_local(
+                                    pano_id, pano_id_attack, valid="poi"
+                                )
+                            )
                     else:
                         pano_id, pano_id_attack = pano["id"], pano["id"]
                         data_route.append(
@@ -636,14 +643,12 @@ if __name__ == "__main__":
     # test_get_poi_dataset()
 
     ### Partial attack generation and test
-    test_generate_partial_attack(valid="poi")
+    valid = "poi"
+    test_generate_partial_attack(valid=valid)
 
     from script.decider import test_partial_attack_predict
 
-    poi = False
-    modelpath = "/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{}.h5".format(
-        poi * "poi"
-    )
+    modelpath = f"/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{valid}.h5"
     rates = [round(x * 0.1, 2) for x in range(0, 11)]
-    acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid="default")
+    acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid=valid)
     Utility.plot(rates, acc_all)
