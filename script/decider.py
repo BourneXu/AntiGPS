@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 19:46:23
 # -----
-# Last Modified: 2020-02-18 00:24:17
+# Last Modified: 2020-02-18 09:59:07
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -16,8 +16,8 @@ from typing import List
 from collections import defaultdict
 
 import numpy as np
-import pandas as pd
 import plyvel
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 from scipy import spatial
 from loguru import logger
@@ -47,10 +47,10 @@ class Decider:
             "/home/bourne/Workstation/AntiGPS/results/train_data_noattack/"
         )
         self.db_attack_poi = plyvel.DB(
-            "/home/bourne/Workstation/AntiGPS/results/train_data_attack_poi/",
+            "/home/bourne/Workstation/AntiGPS/results/train_data_attack_poi/"
         )
         self.db_noattack_poi = plyvel.DB(
-            "/home/bourne/Workstation/AntiGPS/results/train_data_noattack_poi/",
+            "/home/bourne/Workstation/AntiGPS/results/train_data_noattack_poi/"
         )
         self.db_partial_attack = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/test_data_partial_attack/",
@@ -155,7 +155,6 @@ class Decider:
     def create_model(self, input_length, poi=False):
         logger.info("Creating model...")
         model = Sequential()
-        # model.add(Embedding(input_dim=188, output_dim=50, input_length=input_length))
         if poi:
             model.add(
                 LSTM(
@@ -263,11 +262,9 @@ def test_similarity_vector(poi=False):
     idx_attack = [idx for idx in range(len(y_train)) if y_train[idx] == 1]
     idx_noattack = [idx for idx in range(len(y_train)) if y_train[idx] == 0]
 
-    import matplotlib.pyplot as plt
-
-    fig, ax = plt.subplots()
-    line1 = Utility.plot_cdf([similarities[idx] for idx in idx_attack])
-    line2 = Utility.plot_cdf([similarities[idx] for idx in idx_noattack])
+    _, ax = plt.subplots()
+    _ = Utility.plot_cdf([similarities[idx] for idx in idx_attack])
+    _ = Utility.plot_cdf([similarities[idx] for idx in idx_noattack])
     ax.set_title("CDF of vector similarities")
     ax.legend(["Attack", "Non-Attack"])
     ax.xaxis.set_label_text("Similarities")
