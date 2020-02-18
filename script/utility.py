@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from geopy import distance
 from scipy import signal
+from loguru import logger
 from dynaconf import settings
 from statsmodels.distributions.empirical_distribution import ECDF
 
@@ -23,6 +24,11 @@ WESTERNMOST = -124.0
 
 
 class Utility:
+    @staticmethod
+    def plot(x, y):
+        plt.plot(x, y)
+        plt.show()
+
     @staticmethod
     def image_display(image: bytes):
         image = Image.open(io.BytesIO(image))

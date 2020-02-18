@@ -11,7 +11,7 @@ from sentence_transformers import SentenceTransformer
 
 class Feature:
     def __init__(self):
-        logger.info("Initializing sentence transformer model and text boxes cluster")
+        logger.info("Initializing Feature ...")
         self.sentence_model = SentenceTransformer("bert-base-nli-mean-tokens")
         self.text_box_cluster = SpectralClustering(
             n_clusters=3, assign_labels="discretize", random_state=0

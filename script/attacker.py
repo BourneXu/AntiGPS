@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 21:16:28
 # -----
-# Last Modified: 2020-02-09 20:25:18
+# Last Modified: 2020-02-17 01:03:46
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -22,6 +22,7 @@ from script.utility import Utility
 
 class Attacker:
     def __init__(self, datafile):
+        logger.info("Initilizing Attacker ...")
         self.datafile = datafile
         self.__loaddata()
 
@@ -100,19 +101,22 @@ class Attacker:
             pano = self.dataset[pano_nxt_id]
         return route
 
-    def read_route(self, filename: str) -> list:
+    def read_route(self, filename: str, only_id=False) -> list:
         logger.info("Reading route from %s" % filename)
         routesDF = pd.read_csv(filename, index_col=["route_id"])
         routes_num = int(routesDF.index[-1] + 1)
         routes = []
-        for route_id in range(routes_num):
+        for route_id in tqdm(range(routes_num), desc="Route ID"):
             route = []
             routeDF = routesDF.loc[route_id]
             for step in range(len(routeDF)):
                 pano_id = routeDF.iloc[step]["pano_id"]
-                pano = self.dataset[pano_id]
-                pano["lat_attack"] = routeDF.iloc[step]["lats_attack"]
-                pano["lng_attack"] = routeDF.iloc[step]["lngs_attack"]
+                if only_id:
+                    pano = {"id": pano_id}
+                else:
+                    pano = self.dataset[pano_id]
+                    pano["lat_attack"] = routeDF.iloc[step]["lats_attack"]
+                    pano["lng_attack"] = routeDF.iloc[step]["lngs_attack"]
                 route.append(pano)
             routes.append(route)
         return routes

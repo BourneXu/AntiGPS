@@ -6,9 +6,9 @@ import copy
 import json
 import time
 import pickle
+import random
 import hashlib
 import warnings
-import threading
 import concurrent.futures
 
 import numpy as np
@@ -17,7 +17,6 @@ import plyvel
 import requests
 from PIL import Image
 from tqdm import tqdm
-from atpbar import atpbar
 from loguru import logger
 from dynaconf import settings
 from tenacity import *
@@ -36,7 +35,7 @@ class AntiGPS:
     def __init__(self):
         self.attacker = Attacker("./results/pano_text.json")
         self.feature = Feature()
-        self.lock = threading.Lock()
+        self.decider = Decider()
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(120))
     def get_poi_azure(self, credentials: dict, radius=50) -> dict:
@@ -186,8 +185,7 @@ class AntiGPS:
         text_defense = " ".join(
             [x["predicted_labels"] for x in text_defense_list if x["confidence_score"] > 0.95]
         )
-        decider = Decider()
-        ratio = decider.similarity_text(text_attack, text_defense)
+        ratio = self.decider.similarity_text(text_attack, text_defense)
         result = {
             "similarity_text_ratio": [ratio],
             "id": [pano_attack["id"]],
@@ -202,10 +200,11 @@ class AntiGPS:
         resultDF.to_csv("./results/defense_result.csv", mode="a", index=False, header=False)
         logger.info(f"Defensed {pano_attack['id']}")
 
-    def init_traindb(self):
+    def init_leveldb(self):
         """
         Initialize training data levelDB database
         """
+        logger.info("Initializing levelDB ...")
         self.db_feature = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/features/", create_if_missing=True
         )
@@ -226,12 +225,28 @@ class AntiGPS:
             "/home/bourne/Workstation/AntiGPS/results/train_data_noattack_poi/",
             create_if_missing=True,
         )
+        self.db_partial_attack = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_partial_attack/",
+            create_if_missing=True,
+        )
+        self.db_partial_attack_google = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_partial_attack_google/",
+            create_if_missing=True,
+        )
+        self.db_partial_attack_poi = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_partial_attack_poi/",
+            create_if_missing=True,
+        )
 
-    def close_traindb(self):
+    def close_leveldb(self):
+        logger.info("Closing levelDB ...")
         self.db_feature.close()
         self.db_attack.close()
         self.db_noattack.close()
         self.db_poi.close()
+        self.db_partial_attack.close()
+        self.db_partial_attack_google.close()
+        self.db_partial_attack_poi.close()
 
     # TODO: Real system get only one pano from car cam with GPS info
     def generate_feature_vector(self, pano: bytes):
@@ -318,7 +333,7 @@ class AntiGPS:
         return np.array_split(route_todo, thread)
 
     # TODO: Some issues with multiple threads, need to fix
-    def generate_train_data(self, filename, attack=True, noattack=True, thread=5):
+    def generate_train_data(self, filename, attack=True, noattack=True, thread=5, overwrite=False):
         logger.info("Generating training data with Google Street Views")
         routesDF = pd.read_csv(filename, index_col=["route_id"])
         routes_num = int(routesDF.index[-1] + 1)
@@ -327,16 +342,17 @@ class AntiGPS:
         if attack:
 
             def generate_train_data_attack(routes_todo, thread_id):
-                for route_id in atpbar(routes_todo, name=f"Thread: {thread_id}"):
+                for route_id in tqdm(routes_todo, desc=f"Thread: {thread_id}"):
                     key = str(route_id).encode("utf-8")
-                    if self.db_attack.get(key):
+                    if self.db_attack.get(key) and not overwrite:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
+                    routeDF_attack = routesDF.loc[route_id + routes_slot]
                     for step in range(len(routeDF)):
                         pano_id, pano_id_attack = (
                             routeDF.iloc[step]["pano_id"],
-                            routesDF.iloc[step + routes_slot]["pano_id"],
+                            routeDF_attack.iloc[step]["pano_id"],
                         )
                         data_route.append(
                             self.generate_feature_vector_local(pano_id, pano_id_attack)
@@ -360,9 +376,9 @@ class AntiGPS:
         if noattack:
 
             def generate_train_data_noattack(routes_todo, thread_id):
-                for route_id in atpbar(routes_todo, name=f"Thread: {thread_id}"):
+                for route_id in tqdm(routes_todo, desc=f"Thread: {thread_id}"):
                     key = str(route_id).encode("utf-8")
-                    if self.db_noattack.get(key):
+                    if self.db_noattack.get(key) and not overwrite:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
@@ -393,7 +409,9 @@ class AntiGPS:
                 results = [re.result() for re in r]
                 logger.debug(f"All done with {results}")
 
-    def generate_train_data_poi(self, filename, attack=True, noattack=True, thread=5):
+    def generate_train_data_poi(
+        self, filename, attack=True, noattack=True, thread=5, overwrite=False
+    ):
         logger.info("Generating training data with Azure POIs")
         routesDF = pd.read_csv(filename, index_col=["route_id"])
         routes_num = int(routesDF.index[-1] + 1)
@@ -402,16 +420,17 @@ class AntiGPS:
         if attack:
 
             def generate_train_data_attack(routes_todo, thread_id):
-                for route_id in atpbar(routes_todo, name=f"Thread: {thread_id}"):
+                for route_id in tqdm(routes_todo, desc=f"Thread: {thread_id}"):
                     key = str(route_id).encode("utf-8")
-                    if self.db_attack_poi.get(key):
+                    if self.db_attack_poi.get(key) and not overwrite:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
+                    routeDF_attack = routesDF.loc[route_id + routes_slot]
                     for step in range(len(routeDF)):
                         pano_id, pano_id_attack = (
                             routeDF.iloc[step]["pano_id"],
-                            routesDF.iloc[step + routes_slot]["pano_id"],
+                            routeDF_attack.iloc[step]["pano_id"],
                         )
                         data_route.append(
                             self.generate_feature_vector_local(pano_id, pano_id_attack, valid="poi")
@@ -435,9 +454,9 @@ class AntiGPS:
         if noattack:
 
             def generate_train_data_noattack(routes_todo, thread_id):
-                for route_id in atpbar(routes_todo, name=f"Thread: {thread_id}"):
+                for route_id in tqdm(routes_todo, desc=f"Thread: {thread_id}"):
                     key = str(route_id).encode("utf-8")
-                    if self.db_noattack_poi.get(key):
+                    if self.db_noattack_poi.get(key) and not overwrite:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
@@ -465,6 +484,59 @@ class AntiGPS:
                     logger.debug(re.result())
                 results = [re.result() for re in r]
                 logger.debug(f"All done with {results}")
+
+    def generate_partial_attack(
+        self,
+        routes: list,
+        keys: list,
+        rate: float,
+        method="random",
+        valid="default",
+        overwrite=False,
+    ):
+        """Only for research purposes. Generate partial attacked routes.
+        
+        Arguments:
+            routes {str} -- routes with pano_ids
+            keys {list} -- routes id list
+            rate {float} -- partial attacked attack rate
+        
+        Keyword Arguments:
+            method {str} -- ways to define 'partial' (default: {"random"})
+        """
+        logger.info(f"Generating partial attack routes for testing with rate {rate} ...")
+        if valid == "default":
+            db = self.db_partial_attack
+        elif valid == "google":
+            db = self.db_partial_attack_google
+        elif valid == "poi":
+            db = self.db_partial_attack_poi
+        else:
+            raise ValueError(f"Invalid valid value: {valid}")
+        if method == "random":
+            routes_slot = round(len(routes) / 3)
+            route_len = len(routes[int(keys[0])])
+            for key in tqdm(keys):
+                key_db = (str(key) + "_" + str(rate)).encode("utf-8")
+                if db.get(key_db) and not overwrite:
+                    continue
+                route_attack = routes[int(key) + routes_slot]
+                attack_idx = random.sample(list(range(route_len)), round(route_len * rate))
+                data_route = []
+                for idx, pano in enumerate(routes[int(key)]):
+                    if idx in attack_idx:
+                        pano_id, pano_id_attack = pano["id"], route_attack[idx]["id"]
+                        data_route.append(
+                            self.generate_feature_vector_local(
+                                pano_id, pano_id_attack, valid="default"
+                            )
+                        )
+                    else:
+                        pano_id, pano_id_attack = pano["id"], pano["id"]
+                        data_route.append(
+                            self.generate_feature_vector_local(pano_id, pano_id_attack, valid=valid)
+                        )
+                db.put(key_db, pickle.dumps(data_route))
 
 
 def test_get_poi():
@@ -518,11 +590,25 @@ def test_attack_defense():
 def test_generate_train_data():
     antigps = AntiGPS()
     filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer_split.csv"
-    antigps.init_traindb()
-    # antigps.generate_train_data(filename, attack=True, thread=1)
-    antigps.generate_train_data_poi(filename, thread=1)
-    antigps.close_traindb()
-    # print(len(data), len(data[0]), len(data[0][0]))
+    antigps.init_leveldb()
+    antigps.generate_train_data(filename, attack=True, thread=1, overwrite=True)
+    antigps.generate_train_data_poi(filename, thread=1, overwrite=True)
+    antigps.close_leveldb()
+
+
+def test_generate_partial_attack():
+    antigps = AntiGPS()
+    filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer_split.csv"
+    antigps.init_leveldb()
+    with open("/home/bourne/Workstation/AntiGPS/results/keys_test.pkl", "rb") as fout:
+        route_keys = pickle.load(fout)
+    route_keys = [x.decode("utf-8") for x in route_keys]
+    routes = antigps.attacker.read_route(filename, only_id=True)
+    for rate in [round(x * 0.1, 2) for x in range(0, 11)]:
+        antigps.generate_partial_attack(
+            routes, route_keys, rate, method="random", valid="default", overwrite=False
+        )
+    antigps.close_leveldb()
 
 
 if __name__ == "__main__":
@@ -531,6 +617,19 @@ if __name__ == "__main__":
     # test_antigps.extract_text()
 
     # test_attack_defense()
-    test_generate_train_data()
+    # test_generate_train_data()
     # test_get_poi()
     # test_get_poi_dataset()
+
+    ### Partial attack generation and test
+    test_generate_partial_attack()
+
+    from script.decider import test_partial_attack_predict
+
+    poi = False
+    modelpath = "/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{}.h5".format(
+        poi * "poi"
+    )
+    rates = [round(x * 0.1, 2) for x in range(0, 11)]
+    acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid="default")
+    Utility.plot(rates, acc_all)
