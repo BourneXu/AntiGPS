@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 19:46:23
 # -----
-# Last Modified: 2020-02-18 09:59:07
+# Last Modified: 2020-02-18 15:41:19
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -109,7 +109,9 @@ class Decider:
         else:
             keys_attack = [
                 str(i).encode()
-                for i in random.sample(list(range(routes_slot)), round(routes_slot * sample))
+                for i in random.sample(
+                    list(range(2 * routes_slot, 3 * routes_slot)), round(routes_slot * sample)
+                )
             ]
             keys_noattack = [
                 str(i).encode()
@@ -148,7 +150,11 @@ class Decider:
 
         ## Save keys for testing
         keys_test = keys_test[num:]
-        with open("/home/bourne/Workstation/AntiGPS/results/keys_test.pkl", "wb") as fout:
+        if poi:
+            filename_keys_test = "/home/bourne/Workstation/AntiGPS/results/keys_test_poi.pkl"
+        else:
+            filename_keys_test = "/home/bourne/Workstation/AntiGPS/results/keys_test_google.pkl"
+        with open(filename_keys_test, "wb") as fout:
             pickle.dump(keys_test, fout)
         return (pad_sequences(X_train), y_train, pad_sequences(X_test), y_test)
 
@@ -209,7 +215,7 @@ class Decider:
             db = self.db_partial_attack_poi
         else:
             raise ValueError(f"Invalid valid value: {valid}")
-        route_keys = self.load_test_keys()
+        route_keys = self.load_test_keys(valid)
         X_test = []
         for route_key in tqdm(route_keys):
             key = (f"{route_key.decode()}_{rate}").encode()
@@ -217,8 +223,11 @@ class Decider:
         logger.debug(f"Rate: {rate}, {len(X_test)} vectors loaded")
         return np.array(X_test), [1] * len(X_test)
 
-    def load_test_keys(self) -> List[bytes]:
-        with open("/home/bourne/Workstation/AntiGPS/results/keys_test.pkl", "rb") as fout:
+    def load_test_keys(self, valid) -> List[bytes]:
+        """valid can be "google" or "poi"
+        """
+        filename_keys_test = f"/home/bourne/Workstation/AntiGPS/results/keys_test_{valid}.pkl"
+        with open(filename_keys_test, "rb") as fout:
             route_keys = pickle.load(fout)
         return route_keys
 
@@ -290,15 +299,17 @@ def test_partial_attack_predict(modelpath, rates=[], valid="default"):
 
 
 if __name__ == "__main__":
-    poi = False
+    poi = True
     modelpath = None
-    modelpath = "/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{}.h5".format(
-        poi * "poi"
-    )
+    # modelpath = "/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{}.h5".format(
+    #     poi * "poi"
+    # )
     # test_lstm(modelpath=modelpath, poi=poi)
     # test_similarity_vector()
 
-    rates = [round(x * 0.1, 2) for x in range(0, 1)]
-    acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid="default")
-    Utility.plot(rates, acc_all)
+    valid = "poi"
+    rates = [round(x * 0.1, 2) for x in range(0, 11)]
+    acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid=valid)
+    filename = f"/home/bourne/Workstation/AntiGPS/results/test_partial_attack_{valid}.png"
+    Utility.plot(rates, acc_all, "Attacked Rate", "Accuracy", f"Valid: {valid}", filename)
     print(rates, acc_all)

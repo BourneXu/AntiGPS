@@ -8,6 +8,7 @@ import pickle
 import random
 import hashlib
 import warnings
+import threading
 import concurrent.futures
 
 import numpy as np
@@ -16,7 +17,6 @@ import plyvel
 import requests
 from PIL import Image
 from tqdm import tqdm
-from atpbar import atpbar
 from loguru import logger
 from dynaconf import settings
 from tenacity import *
@@ -36,6 +36,7 @@ class AntiGPS:
         self.attacker = Attacker("./results/pano_text.json")
         self.feature = Feature()
         self.decider = Decider()
+        self.lock = threading.Lock()
 
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(120))
     def get_poi_azure(self, credentials: dict, radius=50) -> dict:
@@ -280,7 +281,9 @@ class AntiGPS:
                 )
             )
             feature_vector.extend(self.feature.sentence_vector(self.attacker.dataset[pano_id]))
+            self.lock.acquire()
             self.db_feature.put(key, pickle.dumps(feature_vector))
+            self.lock.release()
         ## google means get attack pano from google API. Otherwise get attack pano from local database
         if valid == "default":
             key = pano_id_attack.encode("utf-8")
@@ -297,7 +300,9 @@ class AntiGPS:
                     self.feature.sentence_vector(self.attacker.dataset[pano_id_attack])
                 )
                 feature_vector.extend(feature_vector_attack)
+                self.lock.acquire()
                 self.db_feature.put(key, pickle.dumps(feature_vector_attack))
+                self.lock.release()
         elif valid == "google":
             ## requests Google Street View and do OCR
             key = (pano_id_attack + "_google").encode("utf-8")
@@ -309,7 +314,9 @@ class AntiGPS:
                 feature_vector_attack = self.feature.textbox_position(ocr_results)
                 feature_vector_attack.extend(self.feature.sentence_vector(ocr_results))
                 feature_vector.extend(feature_vector_attack)
+                self.lock.acquire()
                 self.db_feature.put(key, pickle.dumps(feature_vector_attack))
+                self.lock.release()
         elif valid == "poi":
             ## requests Azure POIs
             key = (pano_id_attack + "_poi").encode("utf-8")
@@ -319,7 +326,9 @@ class AntiGPS:
                 pois = self.get_poi(self.attacker.dataset[pano_id_attack])
                 feature_vector_attack = self.feature.poi_vector(pois)
                 feature_vector.extend(feature_vector_attack)
+                self.lock.acquire()
                 self.db_feature.put(key, pickle.dumps(feature_vector_attack))
+                self.lock.release()
         else:
             raise ValueError(f"Invalid valid param: {valid}")
         return feature_vector
@@ -348,7 +357,7 @@ class AntiGPS:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
-                    routeDF_attack = routesDF.loc[route_id + routes_slot]
+                    routeDF_attack = routesDF.loc[route_id - routes_slot]
                     for step in range(len(routeDF)):
                         pano_id, pano_id_attack = (
                             routeDF.iloc[step]["pano_id"],
@@ -361,7 +370,9 @@ class AntiGPS:
                 return f"done {len(routes_todo)}"
 
             logger.info("Generating training data for attacking")
-            routes_todos = self.get_route_todo(list(range(routes_slot)), self.db_attack, thread)
+            routes_todos = self.get_route_todo(
+                range(2 * routes_slot, 3 * routes_slot), self.db_attack, thread
+            )
             # TODO: Figure out locks in threading
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 r = [
@@ -426,7 +437,7 @@ class AntiGPS:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
-                    routeDF_attack = routesDF.loc[route_id + routes_slot]
+                    routeDF_attack = routesDF.loc[route_id - routes_slot]
                     for step in range(len(routeDF)):
                         pano_id, pano_id_attack = (
                             routeDF.iloc[step]["pano_id"],
@@ -439,7 +450,9 @@ class AntiGPS:
                 return f"done {len(routes_todo)}"
 
             logger.info("Generating training data for attacking")
-            routes_todos = self.get_route_todo(list(range(routes_slot)), self.db_attack_poi, thread)
+            routes_todos = self.get_route_todo(
+                range(2 * routes_slot, 3 * routes_slot), self.db_attack_poi, thread
+            )
             # TODO: Figure out locks in threading
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 r = [
@@ -520,7 +533,7 @@ class AntiGPS:
                 key_db = (str(key) + "_" + str(rate)).encode("utf-8")
                 if db.get(key_db) and not overwrite:
                     continue
-                route_attack = routes[int(key) + routes_slot]
+                route_attack = routes[int(key) - routes_slot]
                 attack_idx = random.sample(list(range(route_len)), round(route_len * rate))
                 data_route = []
                 for idx, pano in enumerate(routes[int(key)]):
@@ -591,22 +604,23 @@ def test_generate_train_data():
     antigps = AntiGPS()
     filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer_split.csv"
     antigps.init_leveldb()
-    antigps.generate_train_data(filename, attack=True, thread=1, overwrite=True)
-    antigps.generate_train_data_poi(filename, thread=1, overwrite=True)
+    # antigps.generate_train_data(filename, attack=True, noattack=False, thread=1, overwrite=False)
+    antigps.generate_train_data_poi(filename, noattack=False, thread=1, overwrite=False)
     antigps.close_leveldb()
 
 
-def test_generate_partial_attack():
+def test_generate_partial_attack(valid="default"):
     antigps = AntiGPS()
     filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer_split.csv"
     antigps.init_leveldb()
-    with open("/home/bourne/Workstation/AntiGPS/results/keys_test.pkl", "rb") as fout:
+    filename_keys_test = f"/home/bourne/Workstation/AntiGPS/results/keys_test_{valid}.pkl"
+    with open(filename_keys_test, "rb") as fout:
         route_keys = pickle.load(fout)
     route_keys = [x.decode("utf-8") for x in route_keys]
     routes = antigps.attacker.read_route(filename, only_id=True)
     for rate in [round(x * 0.1, 2) for x in range(0, 11)]:
         antigps.generate_partial_attack(
-            routes, route_keys, rate, method="random", valid="default", overwrite=False
+            routes, route_keys, rate, method="random", valid=valid, overwrite=False
         )
     antigps.close_leveldb()
 
@@ -622,7 +636,7 @@ if __name__ == "__main__":
     # test_get_poi_dataset()
 
     ### Partial attack generation and test
-    test_generate_partial_attack()
+    test_generate_partial_attack(valid="poi")
 
     from script.decider import test_partial_attack_predict
 

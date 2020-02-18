@@ -22,8 +22,12 @@ WESTERNMOST = -124.0
 
 class Utility:
     @staticmethod
-    def plot(x, y):
-        plt.plot(x, y)
+    def plot(x, y, xlabel, ylabel, title, filename=None):
+        fig, ax = plt.subplots()
+        ax.plot(x, y)
+        ax.set(xlabel=xlabel, ylabel=ylabel, title=title)
+        if filename:
+            fig.savefig(filename)
         plt.show()
 
     @staticmethod
