@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 19:46:23
 # -----
-# Last Modified: 2020-02-18 16:23:36
+# Last Modified: 2020-02-18 17:48:17
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -60,6 +60,7 @@ class Decider:
         )
         self.db_partial_attack_poi = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/test_data_partial_attack_poi/",
+            create_if_missing=True,
         )
 
     def close_leveldb(self):
@@ -279,7 +280,11 @@ def test_similarity_vector(poi=False):
     ax.xaxis.set_label_text("Similarities")
     ax.yaxis.set_label_text("Percent")
     # plt.show()
-    plt.savefig("/home/bourne/Workstation/AntiGPS/results/cdf_similarity_vector.png")
+    plt.savefig(
+        "/home/bourne/Workstation/AntiGPS/results/cdf_similarity_vector_{}.png".format(
+            "poi" if poi else "google"
+        )
+    )
 
 
 def test_partial_attack_predict(modelpath, rates=[], valid="default"):
@@ -300,10 +305,11 @@ def test_partial_attack_predict(modelpath, rates=[], valid="default"):
 
 if __name__ == "__main__":
     valid = "poi"
-    # modelpath = None
+    poi = True if valid == "poi" else False
+    modelpath = None
     modelpath = f"/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{valid}.h5"
-    # test_lstm(modelpath=modelpath, poi=False)
-    # test_similarity_vector()
+    # test_lstm(modelpath=modelpath, poi=poi)
+    # test_similarity_vector(poi=poi)
 
     rates = [round(x * 0.1, 2) for x in range(0, 11)]
     acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid=valid)

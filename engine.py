@@ -517,7 +517,7 @@ class AntiGPS:
         Keyword Arguments:
             method {str} -- ways to define 'partial' (default: {"random"})
         """
-        logger.info(f"Generating partial attack routes for testing with rate {rate} ...")
+        logger.info(f"Generating partial attack routes for testing with rate {rate}, valid {valid}")
         if valid == "default":
             db = self.db_partial_attack
         elif valid == "google":
@@ -539,16 +539,16 @@ class AntiGPS:
                 for idx, pano in enumerate(routes[int(key)]):
                     if idx in attack_idx:
                         pano_id, pano_id_attack = pano["id"], route_attack[idx]["id"]
-                        if valid != "poi":
+                        if valid == "poi":
                             data_route.append(
                                 self.generate_feature_vector_local(
-                                    pano_id, pano_id_attack, valid="default"
+                                    pano_id, pano_id_attack, valid="poi"
                                 )
                             )
                         else:
                             data_route.append(
                                 self.generate_feature_vector_local(
-                                    pano_id, pano_id_attack, valid="poi"
+                                    pano_id, pano_id_attack, valid="default"
                                 )
                             )
                     else:
@@ -651,4 +651,6 @@ if __name__ == "__main__":
     modelpath = f"/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{valid}.h5"
     rates = [round(x * 0.1, 2) for x in range(0, 11)]
     acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid=valid)
-    Utility.plot(rates, acc_all)
+    filename = f"/home/bourne/Workstation/AntiGPS/results/test_partial_attack_{valid}.png"
+    Utility.plot(rates, acc_all, "Attacked Rate", "Accuracy", f"Valid: {valid}", filename)
+    print(rates, acc_all)
