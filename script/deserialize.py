@@ -7,6 +7,7 @@ import plyvel
 import plotly.express as px
 import matplotlib.image as mpimg
 from tqdm import tqdm
+from loguru import logger
 from dynaconf import settings
 from matplotlib import pyplot as plt
 
@@ -17,6 +18,7 @@ sys.path.append("..")
 
 class Deserialize:
     def __init__(self, databaseDir):
+        logger.info(f"Deserializing {databaseDir}")
         self.databaseDir = databaseDir
         self.__connect()
         self.deserialize()
@@ -55,8 +57,8 @@ class Deserialize:
 
 
 if __name__ == "__main__":
-    databaseDir = settings.LEVELDB.dir[1]
+    databaseDir = settings.LEVELDB.dir[2]
     test = Deserialize(databaseDir)
     test.visualize_map()
-    test.visualize_pano(test.pano[b"zhQIpFP7b4i56aavzTW9UA"])
+    # test.visualize_pano(test.pano[b"zhQIpFP7b4i56aavzTW9UA"])
     # test.visualize_pano(test.pano[list(test.pano.keys())[0]])

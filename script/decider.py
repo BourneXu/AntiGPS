@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 19:46:23
 # -----
-# Last Modified: 2020-02-18 17:48:17
+# Last Modified: 2020-02-23 19:32:46
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -46,11 +46,23 @@ class Decider:
         self.db_noattack = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/train_data_noattack/"
         )
+        self.db_attack_test = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_attack/"
+        )
+        self.db_noattack_test = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_noattack/"
+        )
         self.db_attack_poi = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/train_data_attack_poi/"
         )
         self.db_noattack_poi = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/train_data_noattack_poi/"
+        )
+        self.db_attack_test_poi = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_attack_poi/"
+        )
+        self.db_noattack_test_poi = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_noattack_poi/"
         )
         self.db_partial_attack = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/test_data_partial_attack/",
@@ -68,52 +80,51 @@ class Decider:
         self.db_noattack.close()
         self.db_attack_poi.close()
         self.db_noattack_poi.close()
+        self.db_attack_test.close()
+        self.db_noattack_test.close()
+        self.db_attack_test_poi.close()
+        self.db_noattack_test_poi.close()
 
-    def load_data_db(self, keys, attack, poi=False):
-        if attack:
-            if poi:
-                return (
-                    keys,
-                    [pickle.loads(self.db_attack_poi.get(bytes(key))) for key in tqdm(keys)],
-                )
-            return keys, [pickle.loads(self.db_attack.get(bytes(key))) for key in tqdm(keys)]
-        else:
-            if poi:
-                return (
-                    keys,
-                    [pickle.loads(self.db_noattack_poi.get(bytes(key))) for key in tqdm(keys)],
-                )
-            return keys, [pickle.loads(self.db_noattack.get(bytes(key))) for key in tqdm(keys)]
+    def load_data_db(self, db, keys):
+        return keys, [pickle.loads(db.get(bytes(key))) for key in tqdm(keys)]
 
-    def load_data(self, test_split=0.2, workers=5, sample=0.5, routes_slot=None, poi=False):
-        logger.info("Loading data from local levelDB ...")
+    def load_data(
+        self, test_split=0.2, workers=5, sample=0.5, routes_slot=None, poi=False, test=False
+    ):
+        logger.info(
+            "Loading {} data from local levelDB ...".format("testing" if test else "training")
+        )
         self.init_leveldb()
         data_attack, data_noattack = [], []
         keys_test = []
-        if not routes_slot:
-            if poi:
-                keys_attack = np.array_split(
-                    list(self.db_attack_poi.iterator(include_value=False)), workers
-                )
-                keys_noattack = np.array_split(
-                    list(self.db_noattack_poi.iterator(include_value=False)), workers
-                )
+        if not test:
+            if not poi:
+                db_attack, db_noattack = self.db_attack, self.db_noattack
             else:
-                keys_attack = np.array_split(
-                    list(self.db_attack.iterator(include_value=False)), workers
-                )
-                keys_noattack = np.array_split(
-                    list(self.db_noattack.iterator(include_value=False)), workers
-                )
+                db_attack, db_noattack = self.db_attack_poi, self.db_noattack_poi
+        else:
+            if not poi:
+                db_attack, db_noattack = self.db_attack_test, self.db_noattack_test
+            else:
+                db_attack, db_noattack = self.db_attack_test_poi, self.db_noattack_test_poi
+        if not routes_slot:
+            keys_attack = np.array_split(list(db_attack.iterator(include_value=False)), workers)
+            keys_noattack = np.array_split(list(db_noattack.iterator(include_value=False)), workers)
             keys_attack = random.sample(keys_attack, round(len(keys_attack) * sample))
             keys_noattack = random.sample(keys_noattack, round(len(keys_noattack) * sample))
         else:
-            keys_attack = [
-                str(i).encode()
-                for i in random.sample(
-                    list(range(2 * routes_slot, 3 * routes_slot)), round(routes_slot * sample)
-                )
-            ]
+            if test:
+                keys_attack = [
+                    str(i).encode()
+                    for i in random.sample(list(range(routes_slot)), round(routes_slot * sample))
+                ]
+            else:
+                keys_attack = [
+                    str(i).encode()
+                    for i in random.sample(
+                        list(range(2 * routes_slot, 3 * routes_slot)), round(routes_slot * sample)
+                    )
+                ]
             keys_noattack = [
                 str(i).encode()
                 for i in random.sample(
@@ -126,7 +137,7 @@ class Decider:
             )
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             r = [
-                executor.submit(self.load_data_db, keys_attack[i], True, poi)
+                executor.submit(self.load_data_db, db_attack, keys_attack[i])
                 for i in range(workers)
             ]
             for re in concurrent.futures.as_completed(r):
@@ -134,7 +145,7 @@ class Decider:
                 keys_test.extend(re.result()[0])
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             r = [
-                executor.submit(self.load_data_db, keys_noattack[i], False, poi)
+                executor.submit(self.load_data_db, db_noattack, keys_noattack[i])
                 for i in range(workers)
             ]
             for re in concurrent.futures.as_completed(r):
@@ -150,13 +161,15 @@ class Decider:
         y_test = np.array([1] * (len(data_attack) - num) + [0] * (len(data_noattack) - num))
 
         ## Save keys for testing
-        keys_test = keys_test[num:]
-        if poi:
-            filename_keys_test = "/home/bourne/Workstation/AntiGPS/results/keys_test_poi.pkl"
-        else:
-            filename_keys_test = "/home/bourne/Workstation/AntiGPS/results/keys_test_google.pkl"
-        with open(filename_keys_test, "wb") as fout:
-            pickle.dump(keys_test, fout)
+        # keys_test = keys_test[num:]
+        # if poi:
+        #     filename_keys_test = "/home/bourne/Workstation/AntiGPS/results/keys_test_poi.pkl"
+        # else:
+        #     filename_keys_test = "/home/bourne/Workstation/AntiGPS/results/keys_test_google.pkl"
+        # with open(filename_keys_test, "wb") as fout:
+        #     pickle.dump(keys_test, fout)
+        if test_split == 0:
+            return (pad_sequences(X_train), y_train, None, None)
         return (pad_sequences(X_train), y_train, pad_sequences(X_test), y_test)
 
     def create_model(self, input_length, poi=False):
@@ -233,11 +246,10 @@ class Decider:
         return route_keys
 
 
-def test_lstm(modelpath=None, poi=False):
+def test_lstm(modelpath=None, poi=False, test_only=False):
     test = Decider()
-    X_train, y_train, X_test, y_test = test.load_data(
-        sample=0.6, workers=20, routes_slot=5000, poi=poi
-    )
+    if not test_only:
+        X_train, y_train, _, _ = test.load_data(sample=0.6, workers=20, routes_slot=5000, poi=poi)
     if modelpath:
         logger.info(f"Loading model from {modelpath}")
         model = load_model(modelpath)
@@ -258,6 +270,10 @@ def test_lstm(modelpath=None, poi=False):
             logger.info("Saving model...")
 
             model.save(modelpath)
+    logger.info("Start loading testing data ...")
+    X_test, y_test, _, _ = test.load_data(
+        test_split=0, sample=1, workers=20, routes_slot=1000, poi=poi, test=True
+    )
     score, acc = model.evaluate(X_test, y_test, batch_size=1)
     logger.info(f"Test score: {score}")
     logger.info(f"Test accuracy: {acc}")
@@ -303,16 +319,24 @@ def test_partial_attack_predict(modelpath, rates=[], valid="default"):
     return acc_all
 
 
+def test_plot_traindata(poi=False):
+    test = Decider()
+    X_train, y_train, _, _ = test.load_data(sample=0.1, workers=20, routes_slot=5000, poi=poi)
+    save_path = "/home/bourne/Workstation/AntiGPS/results/train_data{}.png".format(poi * "_poi")
+    Utility.plot_trainingdata(X_train, y_train, save_path=save_path)
+
+
 if __name__ == "__main__":
     valid = "poi"
     poi = True if valid == "poi" else False
-    modelpath = None
-    modelpath = f"/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{valid}.h5"
-    # test_lstm(modelpath=modelpath, poi=poi)
+    # modelpath = None
+    # modelpath = f"/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{valid}.h5"
+    # test_lstm(modelpath=modelpath, poi=poi, test_only=True)
     # test_similarity_vector(poi=poi)
+    test_plot_traindata(poi=poi)
 
-    rates = [round(x * 0.1, 2) for x in range(0, 11)]
-    acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid=valid)
-    filename = f"/home/bourne/Workstation/AntiGPS/results/test_partial_attack_{valid}.png"
-    Utility.plot(rates, acc_all, "Attacked Rate", "Accuracy", f"Valid: {valid}", filename)
-    print(rates, acc_all)
+    # rates = [round(x * 0.1, 2) for x in range(0, 11)]
+    # acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid=valid)
+    # filename = f"/home/bourne/Workstation/AntiGPS/results/test_partial_attack_{valid}.png"
+    # Utility.plot(rates, acc_all, "Attacked Rate", "Accuracy", f"Valid: {valid}", filename)
+    # print(rates, acc_all)

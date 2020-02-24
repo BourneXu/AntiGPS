@@ -3,7 +3,7 @@
 # @Author: Chris
 # Created Date: 2020-01-02 21:16:28
 # -----
-# Last Modified: 2020-02-17 01:03:46
+# Last Modified: 2020-02-23 15:38:39
 # Modified By: Chris
 # -----
 # Copyright (c) 2020
@@ -27,7 +27,7 @@ class Attacker:
         self.__loaddata()
 
     def __loaddata(self):
-        logger.info("Loading local pano dataset ...")
+        logger.info(f"Loading local pano dataset from {self.datafile}...")
         self.dataset = {}
         with open(self.datafile, "r") as fin:
             for line in tqdm(fin.readlines()):
@@ -62,9 +62,10 @@ class Attacker:
         count_miss = 0
         for pano in pano_init:
             for _ in range(5):
-                route = self.generate_route(pano, num_point, attack=attack)
+                route = self.generate_route(pano, num_point, route=[], attack=attack)
                 if route:
                     break
+            logger.debug(f"{len(route)}")
             if len(route) < num_point:
                 count_miss += 1
                 logger.warning(f"{pano['id']} can not find a route with {num_point} points.")
@@ -148,9 +149,9 @@ class Attacker:
         return routes_new
 
 
-def test_generate_route():
-    test = Attacker("../results/pano_text.json")
-    routes = test.driving(300, 50)
+def test_generate_route(panofilename, routefilename):
+    test = Attacker(panofilename)
+    routes = test.driving(60, 99)
     routes_dict = {"route_id": [], "pano_id": []}
     coords = {"lats": [], "lngs": [], "lats_attack": [], "lngs_attack": []}
     for idx, route in enumerate(routes):
@@ -163,9 +164,8 @@ def test_generate_route():
             coords["lngs_attack"].append(pano["lng_attack"])
     Utility.visualize_map(coords)
     routesDF = pd.DataFrame({**routes_dict, **coords})
-    filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate.csv"
-    header = not os.path.exists(filename)
-    routesDF.to_csv(filename, index=False, header=header, mode="a")
+    header = not os.path.exists(routefilename)
+    routesDF.to_csv(routefilename, index=False, header=header, mode="a")
 
 
 def test_generate_route_longer():
@@ -214,12 +214,11 @@ def test_generate_route_longer():
     routesDF.to_csv(filename, index=False, header=True, mode="w")
 
 
-def test_split_route():
-    test = Attacker("../results/pano_text.json")
-    fin = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer.csv"
-    routes = test.read_route(fin)
+def test_split_route(panofilename, routefilename):
+    test = Attacker(panofilename)
+    routes = test.read_route(routefilename)
     routes = test.split_route(routes, 50)
-    fout = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer_split.csv"
+    fout = routefilename.split(".")[0] + "_split.csv"
     test.write_route(routes, fout)
 
 
@@ -227,6 +226,12 @@ if __name__ == "__main__":
     # test = Attacker("../results/pano_text.json")
     # test_pano_attack_random = test.random(10)
     # print(test_pano_attack_random)
-
+    # test_generate_route(
+    #     "../results/pano_text_pit.json",
+    #     "/home/bourne/Workstation/AntiGPS/results/routes_generate_pit.csv",
+    # )
     # test_generate_route_longer()
-    test_split_route()
+    test_split_route(
+        "../results/pano_text_pit.json",
+        "/home/bourne/Workstation/AntiGPS/results/routes_generate_pit.csv",
+    )

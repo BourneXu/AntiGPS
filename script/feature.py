@@ -5,7 +5,6 @@ from collections import defaultdict
 import numpy as np
 from loguru import logger
 from sklearn.cluster import SpectralClustering
-
 from sentence_transformers import SentenceTransformer
 
 

@@ -34,6 +34,7 @@ if not sys.warnoptions:
 class AntiGPS:
     def __init__(self):
         self.attacker = Attacker("./results/pano_text.json")
+        self.attacker_test = Attacker("./results/pano_text_pit.json")
         self.feature = Feature()
         self.decider = Decider()
         self.lock = threading.Lock()
@@ -125,18 +126,20 @@ class AntiGPS:
     def load_database(self, databaseDir):
         self.database = Deserialize(databaseDir)
 
-    def extract_text(self):
+    def extract_text(self, filename):
         """This func would be only used for extracting streetlearn dataset
+            manhattan: "./results/pano_text.json"
+            pittsburgh: "./results/pano_text_pit.json"
         """
         ## Donelist
         donelist = set()
-        with open("./results/pano_text.json", "r") as fin:
-            for line in fin.readlines():
-                data = json.loads(line)
-                donelist.add(data["id"])
-
+        if os.path.exists(filename):
+            with open(filename, "r") as fin:
+                for line in fin.readlines():
+                    data = json.loads(line)
+                    donelist.add(data["id"])
         ## write into json file
-        with open("./results/pano_text.json", "a") as fout:
+        with open(filename, "a") as fout:
             for pid, pano in tqdm(self.database.pano.items()):
                 if pid.decode("utf8") in donelist:
                     logger.warning(f"{pid} already processed")
@@ -159,7 +162,7 @@ class AntiGPS:
                     "pitch": pano.pitch_deg,
                     "neighbor": [x.id for x in pano.neighbor],
                     "pano_date": pano.pano_date,
-                    "text_ocr": info_text,
+                    **info_text,
                 }
                 fout.write(json.dumps(info_all) + "\n")
                 os.remove(image_path)
@@ -215,6 +218,12 @@ class AntiGPS:
         self.db_noattack = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/train_data_noattack/", create_if_missing=True
         )
+        self.db_attack_test = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_attack/", create_if_missing=True
+        )
+        self.db_noattack_test = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_noattack/", create_if_missing=True
+        )
         self.db_poi = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/azure_poi/", create_if_missing=True
         )
@@ -224,6 +233,14 @@ class AntiGPS:
         )
         self.db_noattack_poi = plyvel.DB(
             "/home/bourne/Workstation/AntiGPS/results/train_data_noattack_poi/",
+            create_if_missing=True,
+        )
+        self.db_attack_test_poi = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_attack_poi/",
+            create_if_missing=True,
+        )
+        self.db_noattack_test_poi = plyvel.DB(
+            "/home/bourne/Workstation/AntiGPS/results/test_data_noattack_poi/",
             create_if_missing=True,
         )
         self.db_partial_attack = plyvel.DB(
@@ -244,7 +261,13 @@ class AntiGPS:
         self.db_feature.close()
         self.db_attack.close()
         self.db_noattack.close()
+        self.db_attack_test.close()
+        self.db_noattack_test.close()
         self.db_poi.close()
+        self.db_attack_poi.close()
+        self.db_noattack_poi.close()
+        self.db_attack_test_poi.close()
+        self.db_noattack_test_poi.close()
         self.db_partial_attack.close()
         self.db_partial_attack_google.close()
         self.db_partial_attack_poi.close()
@@ -254,7 +277,7 @@ class AntiGPS:
         pass
 
     # TODO: For real system, input should be two pano bytes or image objects
-    def generate_feature_vector_local(self, pano_id, pano_id_attack, valid="default"):
+    def generate_feature_vector_local(self, pano_id, pano_id_attack, valid="default", test=False):
         """Locally generate feature vectors with three validation methods:
         1. local database (default); 
         2. Google Street View APIs (google); 
@@ -270,17 +293,20 @@ class AntiGPS:
         Returns:
             list -- feature vector
         """
+        if test:
+            attacker = self.attacker_test
+        else:
+            attacker = self.attacker
         key = pano_id.encode("utf-8")
         if self.db_feature.get(key):
             feature_vector = pickle.loads(self.db_feature.get(key))
         else:
             feature_vector = []
-            feature_vector.extend(
-                self.feature.textbox_position(
-                    self.attacker.dataset[pano_id], height=408, width=1632
-                )
-            )
-            feature_vector.extend(self.feature.sentence_vector(self.attacker.dataset[pano_id]))
+            # feature_vector.extend(
+            #     self.feature.textbox_position(attacker.dataset[pano_id], height=408, width=1632)
+            # )
+            feature_vector.extend(self.feature.textbox_position(attacker.dataset[pano_id]))
+            feature_vector.extend(self.feature.sentence_vector(attacker.dataset[pano_id]))
             self.lock.acquire()
             self.db_feature.put(key, pickle.dumps(feature_vector))
             self.lock.release()
@@ -292,12 +318,13 @@ class AntiGPS:
             else:
                 feature_vector_attack = []
                 feature_vector_attack.extend(
-                    self.feature.textbox_position(
-                        self.attacker.dataset[pano_id_attack], height=408, width=1632
-                    )
+                    # self.feature.textbox_position(
+                    #     attacker.dataset[pano_id_attack], height=408, width=1632
+                    # )
+                    self.feature.textbox_position(attacker.dataset[pano_id_attack])
                 )
                 feature_vector_attack.extend(
-                    self.feature.sentence_vector(self.attacker.dataset[pano_id_attack])
+                    self.feature.sentence_vector(attacker.dataset[pano_id_attack])
                 )
                 feature_vector.extend(feature_vector_attack)
                 self.lock.acquire()
@@ -309,7 +336,7 @@ class AntiGPS:
             if self.db_feature.get(key):
                 feature_vector.extend(pickle.loads(self.db_feature.get(key)))
             else:
-                image, image_path = self.get_pano_google(self.attacker.dataset[pano_id_attack])
+                image, image_path = self.get_pano_google(attacker.dataset[pano_id_attack])
                 ocr_results = self.ocr(image_path)
                 feature_vector_attack = self.feature.textbox_position(ocr_results)
                 feature_vector_attack.extend(self.feature.sentence_vector(ocr_results))
@@ -323,7 +350,7 @@ class AntiGPS:
             if self.db_feature.get(key):
                 feature_vector.extend(pickle.loads(self.db_feature.get(key)))
             else:
-                pois = self.get_poi(self.attacker.dataset[pano_id_attack])
+                pois = self.get_poi(attacker.dataset[pano_id_attack])
                 feature_vector_attack = self.feature.poi_vector(pois)
                 feature_vector.extend(feature_vector_attack)
                 self.lock.acquire()
@@ -342,37 +369,55 @@ class AntiGPS:
         return np.array_split(route_todo, thread)
 
     # TODO: Some issues with multiple threads, need to fix
-    def generate_train_data(self, filename, attack=True, noattack=True, thread=5, overwrite=False):
-        logger.info("Generating training data with Google Street Views")
+    def generate_train_data(
+        self, filename, attack=True, noattack=True, thread=5, overwrite=False, test=False
+    ):
+        logger.info(
+            "Generating {} data with Google Street Views".format("testing" if test else "training")
+        )
         routesDF = pd.read_csv(filename, index_col=["route_id"])
         routes_num = int(routesDF.index[-1] + 1)
         routes_slot = round(routes_num / 3)
+        if test:
+            db_attack = self.db_attack_test
+            db_noattack = self.db_noattack_test
+        else:
+            db_attack = self.db_attack
+            db_noattack = self.db_noattack
         ## LSTM input data N (routes) x M (time steps) x W (features)
         if attack:
 
             def generate_train_data_attack(routes_todo, thread_id):
                 for route_id in tqdm(routes_todo, desc=f"Thread: {thread_id}"):
                     key = str(route_id).encode("utf-8")
-                    if self.db_attack.get(key) and not overwrite:
+                    if db_attack.get(key) and not overwrite:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
-                    routeDF_attack = routesDF.loc[route_id - routes_slot]
+                    if test:
+                        routeDF_attack = routesDF.loc[route_id + routes_slot]
+                    else:
+                        routeDF_attack = routesDF.loc[route_id - routes_slot]
                     for step in range(len(routeDF)):
                         pano_id, pano_id_attack = (
                             routeDF.iloc[step]["pano_id"],
                             routeDF_attack.iloc[step]["pano_id"],
                         )
                         data_route.append(
-                            self.generate_feature_vector_local(pano_id, pano_id_attack)
+                            self.generate_feature_vector_local(pano_id, pano_id_attack, test=test)
                         )
-                    self.db_attack.put(key, pickle.dumps(data_route))
+                    db_attack.put(key, pickle.dumps(data_route))
                 return f"done {len(routes_todo)}"
 
-            logger.info("Generating training data for attacking")
-            routes_todos = self.get_route_todo(
-                range(2 * routes_slot, 3 * routes_slot), self.db_attack, thread
+            logger.info(
+                "Generating {} data for attacking".format("testing" if test else "training")
             )
+            if test:
+                routes_todos = self.get_route_todo(range(routes_slot), db_attack, thread)
+            else:
+                routes_todos = self.get_route_todo(
+                    range(2 * routes_slot, 3 * routes_slot), db_attack, thread
+                )
             # TODO: Figure out locks in threading
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 r = [
@@ -389,7 +434,7 @@ class AntiGPS:
             def generate_train_data_noattack(routes_todo, thread_id):
                 for route_id in tqdm(routes_todo, desc=f"Thread: {thread_id}"):
                     key = str(route_id).encode("utf-8")
-                    if self.db_noattack.get(key) and not overwrite:
+                    if db_noattack.get(key) and not overwrite:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
@@ -400,15 +445,17 @@ class AntiGPS:
                         )
                         data_route.append(
                             self.generate_feature_vector_local(
-                                pano_id, pano_id_attack, valid="google"
+                                pano_id, pano_id_attack, valid="google", test=test
                             )
                         )
-                    self.db_noattack.put(key, pickle.dumps(data_route))
+                    db_noattack.put(key, pickle.dumps(data_route))
                 return f"done {len(routes_todo)}"
 
-            logger.info("Generating training data for non-attacking")
+            logger.info(
+                "Generating {} data for non-attacking".format("testing" if test else "training")
+            )
             routes_todos = self.get_route_todo(
-                list(range(2 * routes_slot, 3 * routes_slot)), self.db_noattack, thread
+                list(range(2 * routes_slot, 3 * routes_slot)), db_noattack, thread
             )
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 r = [
@@ -421,38 +468,55 @@ class AntiGPS:
                 logger.debug(f"All done with {results}")
 
     def generate_train_data_poi(
-        self, filename, attack=True, noattack=True, thread=5, overwrite=False
+        self, filename, attack=True, noattack=True, thread=5, overwrite=False, test=False
     ):
-        logger.info("Generating training data with Azure POIs")
+        logger.info("Generating {} data with Azure POIs".format("testing" if test else "training"))
         routesDF = pd.read_csv(filename, index_col=["route_id"])
         routes_num = int(routesDF.index[-1] + 1)
         routes_slot = round(routes_num / 3)
         ## LSTM input data N (routes) x M (time steps) x W (features)
+        if test:
+            db_attack_poi = self.db_attack_test_poi
+            db_noattack_poi = self.db_noattack_test_poi
+        else:
+            db_attack_poi = self.db_attack_poi
+            db_noattack_poi = self.db_noattack_poi
+
         if attack:
 
             def generate_train_data_attack(routes_todo, thread_id):
                 for route_id in tqdm(routes_todo, desc=f"Thread: {thread_id}"):
                     key = str(route_id).encode("utf-8")
-                    if self.db_attack_poi.get(key) and not overwrite:
+                    if db_attack_poi.get(key) and not overwrite:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
-                    routeDF_attack = routesDF.loc[route_id - routes_slot]
+                    if test:
+                        routeDF_attack = routesDF.loc[route_id + routes_slot]
+                    else:
+                        routeDF_attack = routesDF.loc[route_id - routes_slot]
                     for step in range(len(routeDF)):
                         pano_id, pano_id_attack = (
                             routeDF.iloc[step]["pano_id"],
                             routeDF_attack.iloc[step]["pano_id"],
                         )
                         data_route.append(
-                            self.generate_feature_vector_local(pano_id, pano_id_attack, valid="poi")
+                            self.generate_feature_vector_local(
+                                pano_id, pano_id_attack, valid="poi", test=test
+                            )
                         )
-                    self.db_attack_poi.put(key, pickle.dumps(data_route))
+                    db_attack_poi.put(key, pickle.dumps(data_route))
                 return f"done {len(routes_todo)}"
 
-            logger.info("Generating training data for attacking")
-            routes_todos = self.get_route_todo(
-                range(2 * routes_slot, 3 * routes_slot), self.db_attack_poi, thread
+            logger.info(
+                "Generating {} data for attacking".format("testing" if test else "training")
             )
+            if test:
+                routes_todos = self.get_route_todo(range(routes_slot), db_attack_poi, thread)
+            else:
+                routes_todos = self.get_route_todo(
+                    range(2 * routes_slot, 3 * routes_slot), db_attack_poi, thread
+                )
             # TODO: Figure out locks in threading
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 r = [
@@ -469,7 +533,7 @@ class AntiGPS:
             def generate_train_data_noattack(routes_todo, thread_id):
                 for route_id in tqdm(routes_todo, desc=f"Thread: {thread_id}"):
                     key = str(route_id).encode("utf-8")
-                    if self.db_noattack_poi.get(key) and not overwrite:
+                    if db_noattack_poi.get(key) and not overwrite:
                         continue
                     data_route = []
                     routeDF = routesDF.loc[route_id]
@@ -479,14 +543,18 @@ class AntiGPS:
                             routeDF.iloc[step]["pano_id"],
                         )
                         data_route.append(
-                            self.generate_feature_vector_local(pano_id, pano_id_attack, valid="poi")
+                            self.generate_feature_vector_local(
+                                pano_id, pano_id_attack, valid="poi", test=test
+                            )
                         )
-                    self.db_noattack_poi.put(key, pickle.dumps(data_route))
+                    db_noattack_poi.put(key, pickle.dumps(data_route))
                 return f"done {len(routes_todo)}"
 
-            logger.info("Generating training data for non-attacking")
+            logger.info(
+                "Generating {} data for non-attacking".format("testing" if test else "training")
+            )
             routes_todos = self.get_route_todo(
-                list(range(2 * routes_slot, 3 * routes_slot)), self.db_noattack_poi, thread
+                list(range(2 * routes_slot, 3 * routes_slot)), db_noattack_poi, thread
             )
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                 r = [
@@ -533,7 +601,7 @@ class AntiGPS:
                 key_db = (str(key) + "_" + str(rate)).encode("utf-8")
                 if db.get(key_db) and not overwrite:
                     continue
-                route_attack = routes[int(key) - routes_slot]
+                route_attack = routes[int(key) + routes_slot]
                 attack_idx = random.sample(list(range(route_len)), round(route_len * rate))
                 data_route = []
                 for idx, pano in enumerate(routes[int(key)]):
@@ -542,19 +610,21 @@ class AntiGPS:
                         if valid == "poi":
                             data_route.append(
                                 self.generate_feature_vector_local(
-                                    pano_id, pano_id_attack, valid="poi"
+                                    pano_id, pano_id_attack, valid="poi", test=True
                                 )
                             )
                         else:
                             data_route.append(
                                 self.generate_feature_vector_local(
-                                    pano_id, pano_id_attack, valid="default"
+                                    pano_id, pano_id_attack, valid="default", test=True
                                 )
                             )
                     else:
                         pano_id, pano_id_attack = pano["id"], pano["id"]
                         data_route.append(
-                            self.generate_feature_vector_local(pano_id, pano_id_attack, valid=valid)
+                            self.generate_feature_vector_local(
+                                pano_id, pano_id_attack, valid=valid, test=True
+                            )
                         )
                 db.put(key_db, pickle.dumps(data_route))
 
@@ -616,6 +686,17 @@ def test_generate_train_data():
     antigps.close_leveldb()
 
 
+def test_generate_test_data():
+    antigps = AntiGPS()
+    filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_pit_split.csv"
+    antigps.init_leveldb()
+    antigps.generate_train_data(
+        filename, attack=True, noattack=False, thread=1, overwrite=False, test=True
+    )
+    antigps.generate_train_data_poi(filename, noattack=False, thread=1, overwrite=False, test=True)
+    antigps.close_leveldb()
+
+
 def test_generate_partial_attack(valid="default"):
     antigps = AntiGPS()
     filename = "/home/bourne/Workstation/AntiGPS/results/routes_generate_longer_split.csv"
@@ -634,23 +715,25 @@ def test_generate_partial_attack(valid="default"):
 
 if __name__ == "__main__":
     # test_antigps = AntiGPS()
-    # test_antigps.load_database(settings.LEVELDB.dir[1])
-    # test_antigps.extract_text()
+    # test_antigps.load_database(settings.LEVELDB.dir[2])
+    # filename = "./results/pano_text_pit.json"
+    # test_antigps.extract_text(filename)
 
     # test_attack_defense()
     # test_generate_train_data()
+    test_generate_test_data()
     # test_get_poi()
     # test_get_poi_dataset()
 
     ### Partial attack generation and test
-    valid = "poi"
-    test_generate_partial_attack(valid=valid)
+    # valid = "poi"
+    # test_generate_partial_attack(valid=valid)
 
-    from script.decider import test_partial_attack_predict
+    # from script.decider import test_partial_attack_predict
 
-    modelpath = f"/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{valid}.h5"
-    rates = [round(x * 0.1, 2) for x in range(0, 11)]
-    acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid=valid)
-    filename = f"/home/bourne/Workstation/AntiGPS/results/test_partial_attack_{valid}.png"
-    Utility.plot(rates, acc_all, "Attacked Rate", "Accuracy", f"Valid: {valid}", filename)
-    print(rates, acc_all)
+    # modelpath = f"/home/bourne/Workstation/AntiGPS/results/trained_models/lstm_{valid}.h5"
+    # rates = [round(x * 0.1, 2) for x in range(0, 11)]
+    # acc_all = test_partial_attack_predict(modelpath=modelpath, rates=rates, valid=valid)
+    # filename = f"/home/bourne/Workstation/AntiGPS/results/test_partial_attack_{valid}.png"
+    # Utility.plot(rates, acc_all, "Attacked Rate", "Accuracy", f"Valid: {valid}", filename)
+    # print(rates, acc_all)
