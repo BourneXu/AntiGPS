@@ -3,8 +3,10 @@ import io
 import os
 import random
 
+import numpy as np
 import pandas as pd
 import geocoder
+import hypertools as hyp
 import plotly.express as px
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
@@ -111,6 +113,12 @@ class Utility:
             coor_start, coor_end = (start["lat"], start["lng"]), (end["lat"], end["lng"])
             dist += distance.distance(coor_start, coor_end).m
         return dist
+
+    @staticmethod
+    def plot_trainingdata(X_train: np.ndarray, y_train, ndims=3, save_path=None):
+        ## X_train is 3-D.
+        X_train_2d = np.reshape(X_train, (X_train.shape[0], X_train.shape[1] * X_train.shape[2]))
+        geo = hyp.plot(X_train_2d, ".", hue=y_train, ndims=ndims, legend=True, save_path=save_path)
 
 
 def test_concat_images():
